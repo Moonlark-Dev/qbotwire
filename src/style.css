@@ -1,0 +1,329 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f5f9;
+  --bg-glow: #e8effc;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --panel-3: #f1f4f9;
+  --ink: #0f172a;
+  --ink-2: #475467;
+  --ink-3: #8a94a6;
+  --line: #e6eaf1;
+  --line-strong: #d5dce8;
+  --accent: #2563eb;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eef4ff;
+  --accent-line: #c9dcff;
+  --green: #16a34a;
+  --green-soft: #e9f9ef;
+  --red: #dc2626;
+  --red-soft: #fef0f0;
+  --amber: #d97706;
+  --amber-soft: #fff7e8;
+  --violet: #7c3aed;
+  --violet-soft: #f4efff;
+  --pink: #db2777;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 70px rgba(15, 23, 42, 0.16);
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Consolas", "Liberation Mono",
+    monospace;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background:
+    radial-gradient(1100px 700px at 85% -10%, var(--bg-glow), transparent 60%),
+    var(--bg);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background: #cfe0ff;
+}
+
+/* Scrollbars ------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c8d1e0 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c8d1e0;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #aab6c9;
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+/* Shared primitives ------------------------------------------------------ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.06s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn:hover {
+  background: var(--panel-2);
+  border-color: #c2ccdc;
+  color: var(--ink);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, #2f6df0, var(--accent));
+  border-color: var(--accent-2);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.28);
+}
+
+.btn.primary:hover {
+  background: linear-gradient(180deg, #2a63dd, var(--accent-2));
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+}
+
+.btn.ghost:hover {
+  background: var(--panel-3);
+  border-color: transparent;
+}
+
+.btn.danger {
+  color: var(--red);
+  border-color: #f0c7c7;
+  background: #fffafa;
+}
+
+.btn.danger:hover {
+  background: var(--red-soft);
+  border-color: #e9b2b2;
+}
+
+.btn.small {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.btn.icon {
+  width: 34px;
+  padding: 0;
+}
+
+.btn.icon.small {
+  width: 28px;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.input:hover,
+.textarea:hover,
+.select:hover {
+  border-color: #c2ccdc;
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: #a9b2c2;
+}
+
+.textarea {
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  padding-right: 28px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* JSON viewer ------------------------------------------------------------ */
+.json-view {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #d8e0ef;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-view .tok-key {
+  color: #8cc8ff;
+}
+
+.json-view .tok-string {
+  color: #a5e8b8;
+}
+
+.json-view .tok-number {
+  color: #f7c873;
+}
+
+.json-view .tok-bool {
+  color: #d9a7ff;
+}
+
+.json-view .tok-null {
+  color: #93a3ba;
+}
+
+.json-view .tok-punct {
+  color: #93a3ba;
+}
