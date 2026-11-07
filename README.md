@@ -1,6 +1,6 @@
-# QBotWire
+# Moonlark QBotWire
 
-> 一个用于调试腾讯 QQ Bot API v2 的桌面工作台。
+> 一个用于调试腾讯 QQ Bot API 的桌面工作台。
 
 [![CI](https://github.com/Moonlark-Dev/qbotwire/actions/workflows/ci.yml/badge.svg)](https://github.com/Moonlark-Dev/qbotwire/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
