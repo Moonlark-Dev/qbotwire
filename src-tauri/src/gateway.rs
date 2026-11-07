@@ -236,7 +236,18 @@ async fn connect_once(
                         continue;
                     }
                     Message::Close(frame) => {
-                        return Ok(Flow::Closed(Some(format!("网关关闭：{frame:?}"))));
+                        let mut detail = format!("网关关闭：{frame:?}");
+                        if let Some(frame) = &frame {
+                            let code = u16::from(frame.code);
+                            if code == 4004 {
+                                core.auth.clear();
+                                detail = "网关认证失败（4004），将重新获取 AccessToken".to_string();
+                            }
+                            if matches!(code, 4006 | 4009) {
+                                *session = None;
+                            }
+                        }
+                        return Ok(Flow::Closed(Some(detail)));
                     }
                     _ => continue,
                 };

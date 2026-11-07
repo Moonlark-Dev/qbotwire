@@ -115,7 +115,11 @@ async function send() {
     if (!tabs.value.includes(tab)) return
     tab.response = response
     if (response.ok && app.settings.autoSaveOnSuccess && !tab.savedId) {
-      await autoSave(tab)
+      try {
+        await autoSave(tab)
+      } catch (reason) {
+        toast('error', `自动保存失败：${reason instanceof Error ? reason.message : String(reason)}`)
+      }
     }
   } catch (reason) {
     if (!tabs.value.includes(tab)) return

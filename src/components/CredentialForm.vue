@@ -145,6 +145,7 @@ function fillDemo() {
             placeholder="例如 102030405"
             autocomplete="off"
             spellcheck="false"
+            autofocus
           />
         </div>
         <span class="hint">QQ 开放平台机器人资料页的 AppID</span>
