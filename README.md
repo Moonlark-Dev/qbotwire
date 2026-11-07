@@ -110,7 +110,7 @@ npm run preview          # 预览生产构建（0.0.0.0:4173）
 npm run tauri build
 ```
 
-产物位于 `src-tauri/target/release/bundle/`。CI 会在 Linux 上额外构建 `deb` 包验证打包链路；
+产物位于 `src-tauri/target/release/bundle/`。CI 会额外构建 Linux `deb` 与 Windows NSIS 安装包验证打包链路；
 发布流程见 `.github/workflows/release.yml`。
 
 ## 首次连接
@@ -145,7 +145,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 ```
 
 CI 见 `.github/workflows/ci.yml`：Web 类型检查 / 测试 / 构建，Rust fmt / clippy / 测试，
-以及 Linux `deb` 打包。
+以及 Linux `deb` + Windows NSIS 打包。
 
 ## 目录结构
 

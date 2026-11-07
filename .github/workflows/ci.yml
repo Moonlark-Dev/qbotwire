@@ -56,13 +56,28 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   bundle:
-    name: Tauri bundle (Linux deb)
+    name: Tauri bundle (${{ matrix.label }})
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     needs: [web]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux deb
+            os: ubuntu-24.04
+            bundles: deb
+            artifact: qbotwire-linux-deb
+            path: src-tauri/target/release/bundle/deb/*.deb
+          - label: Windows NSIS
+            os: windows-latest
+            bundles: nsis
+            artifact: qbotwire-windows-nsis
+            path: src-tauri/target/release/bundle/nsis/*.exe
     steps:
       - uses: actions/checkout@v7
-      - name: Install Tauri system dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -76,10 +91,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          key: bundle-${{ matrix.os }}
       - run: npm ci
-      - run: npm run tauri build -- --bundles deb
+      - run: npm run tauri build -- --bundles ${{ matrix.bundles }}
       - uses: actions/upload-artifact@v7
         with:
-          name: qbotwire-linux-deb
-          path: src-tauri/target/release/bundle/deb/*.deb
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
           if-no-files-found: error
