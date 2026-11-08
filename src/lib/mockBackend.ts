@@ -406,7 +406,7 @@ export function createMockBackend(): Backend {
         status,
         events: [...eventBuffer],
         cache: snapshot(),
-        version: '0.1.0-preview',
+        version: '1.0.0-preview',
       }
     },
     login,
