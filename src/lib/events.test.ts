@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GatewayEvent } from '@/types'
-import { eventSummary, formatEvent, stripMentions } from './events'
+import { eventSummary, formatEvent, stripMentions, type EventLookup } from './events'
 
 function event(type: string, data: unknown): GatewayEvent {
   return {
@@ -10,6 +10,23 @@ function event(type: string, data: unknown): GatewayEvent {
     receivedAt: '2026-11-07T12:00:00.000Z',
     data,
   }
+}
+
+const lookup: EventLookup = {
+  appId: '102030405',
+  user: (openid) => {
+    if (openid === 'member-1') {
+      return { name: '小灯', avatar: null, unionOpenid: 'union-cache' }
+    }
+    if (openid === 'u-9') {
+      return { name: '缓存用户', avatar: 'https://example.com/u9.png' }
+    }
+    return undefined
+  },
+  group: (openid) =>
+    openid === 'group-1'
+      ? { name: 'Moonlark 开发者群', avatar: 'https://example.com/g.png' }
+      : undefined,
 }
 
 describe('stripMentions', () => {
@@ -116,5 +133,91 @@ describe('formatEvent', () => {
       }),
     )
     expect(summary).toBe('一条消息')
+  })
+
+  it('resolves the group, author and mentions from the local cache', () => {
+    const view = formatEvent(
+      event('GROUP_AT_MESSAGE_CREATE', {
+        id: 'msg-20',
+        content: '<@!member-1> 你好',
+        group_openid: 'group-1',
+        author: {
+          id: 'member-1',
+          member_openid: 'member-1',
+          union_openid: 'union-api',
+        },
+        mentions: [
+          { id: 'member-1', member_openid: 'member-1' },
+          { id: 'member-2', member_openid: 'member-2', username: '路人', bot: true },
+        ],
+      }),
+      lookup,
+    )
+
+    expect(view.group).toMatchObject({
+      kind: 'group',
+      openid: 'group-1',
+      name: 'Moonlark 开发者群',
+      avatar: 'https://example.com/g.png',
+      fromCache: true,
+    })
+    expect(view.author).toMatchObject({
+      kind: 'user',
+      openid: 'member-1',
+      name: '小灯',
+      avatar: 'https://q.qlogo.cn/qqapp/102030405/member-1/100',
+      unionOpenid: 'union-api',
+      fromCache: true,
+    })
+    expect(view.mentions?.map((mention) => mention.name)).toEqual(['小灯', '路人'])
+    expect(view.mentions?.[1].bot).toBe(true)
+
+    const groupField = view.fields.find((item) => item.label === '群 OpenID')
+    expect(groupField?.entity?.name).toBe('Moonlark 开发者群')
+    const authorField = view.fields.find((item) => item.label === '成员 OpenID')
+    expect(authorField?.entity?.name).toBe('小灯')
+    const mentionField = view.fields.find((item) => item.label === '提及')
+    expect(mentionField?.entities?.map((entity) => entity.name)).toEqual(['小灯', '路人'])
+  })
+
+  it('prefers names and avatars carried by the payload', () => {
+    const view = formatEvent(
+      event('AT_MESSAGE_CREATE', {
+        id: 'msg-21',
+        content: 'hi',
+        guild_id: 'guild-1',
+        channel_id: 'channel-1',
+        author: {
+          id: 'member-1',
+          username: '频道里的旅人',
+          avatar: 'https://example.com/avatar.png',
+        },
+      }),
+      lookup,
+    )
+
+    expect(view.author).toMatchObject({
+      name: '频道里的旅人',
+      avatar: 'https://example.com/avatar.png',
+      fromCache: false,
+    })
+  })
+
+  it('uses the cached name for a c2c author', () => {
+    const view = formatEvent(
+      event('C2C_MESSAGE_CREATE', {
+        id: 'msg-22',
+        content: '你好',
+        author: { id: 'u-9', user_openid: 'u-9' },
+      }),
+      lookup,
+    )
+
+    expect(view.author).toMatchObject({
+      openid: 'u-9',
+      name: '缓存用户',
+      avatar: 'https://example.com/u9.png',
+    })
+    expect(view.group).toBeNull()
   })
 })

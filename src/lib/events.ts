@@ -1,4 +1,5 @@
 import type { GatewayEvent } from '@/types'
+import { resolveUserAvatar } from './avatar'
 
 export type EventCategory =
   | 'message'
@@ -14,6 +15,12 @@ export interface FormattedEventView {
   category: EventCategory
   fields: FormattedField[]
   content?: string | null
+  /** Group chat behind `group_openid`, enriched with the local cache. */
+  group?: EventEntity | null
+  /** Author of a message event, enriched with the local cache. */
+  author?: EventEntity | null
+  /** Users mentioned by a message event, enriched with the local cache. */
+  mentions?: EventEntity[]
   raw: unknown
 }
 
@@ -21,6 +28,45 @@ export interface FormattedField {
   label: string
   value: string
   mono?: boolean
+  /** Cached profile shown as a badge next to the OpenID. */
+  entity?: EventEntity
+  /** Multiple profiles (e.g. every mentioned user) for one field. */
+  entities?: EventEntity[]
+}
+
+/** A user / group referenced by an event, resolved against the local cache. */
+export interface EventEntity {
+  kind: 'user' | 'group'
+  openid: string
+  /** Display name: the payload value first, then the cached name. */
+  name: string | null
+  avatar: string | null
+  unionOpenid?: string | null
+  /** Mention entry flagged as a Bot by QQ. */
+  bot?: boolean
+  /** True when the name or avatar was filled in from the local cache. */
+  fromCache?: boolean
+}
+
+interface CacheUser {
+  name?: string | null
+  avatar?: string | null
+  unionOpenid?: string | null
+}
+
+interface CacheGroup {
+  name?: string | null
+  avatar?: string | null
+}
+
+/**
+ * Optional local-cache resolver. Without it the view still carries the raw
+ * OpenIDs; with it the UI can also show names and avatars.
+ */
+export interface EventLookup {
+  appId?: string | null
+  user?: (openid: string) => CacheUser | undefined
+  group?: (openid: string) => CacheGroup | undefined
 }
 
 type Data = Record<string, unknown>
@@ -48,6 +94,59 @@ function field(label: string, value: unknown, mono = true): FormattedField | nul
 
 function fields(...items: Array<FormattedField | null>): FormattedField[] {
   return items.filter((item): item is FormattedField => item !== null)
+}
+
+function entityField(
+  label: string,
+  value: unknown,
+  entity: EventEntity | null | undefined,
+  mono = true,
+): FormattedField | null {
+  const rendered = text(value)
+  if (!rendered) return null
+  return entity ? { label, value: rendered, mono, entity } : { label, value: rendered, mono }
+}
+
+function userEntity(
+  openidValue: unknown,
+  supplied: { name?: unknown; avatar?: unknown; unionOpenid?: unknown; bot?: unknown },
+  lookup?: EventLookup,
+): EventEntity | null {
+  const openid = text(openidValue).trim()
+  if (!openid) return null
+  const cached = lookup?.user?.(openid)
+  const suppliedName = text(supplied.name).trim()
+  const cachedName = text(cached?.name).trim()
+  const suppliedAvatar = text(supplied.avatar).trim()
+  const cachedAvatar = text(cached?.avatar).trim()
+  const unionOpenid = text(supplied.unionOpenid).trim() || text(cached?.unionOpenid).trim()
+  return {
+    kind: 'user',
+    openid,
+    name: suppliedName || cachedName || null,
+    avatar: resolveUserAvatar(lookup?.appId, {
+      openid,
+      avatar: suppliedAvatar || cachedAvatar || null,
+    }),
+    unionOpenid: unionOpenid || null,
+    bot: supplied.bot === true,
+    fromCache: Boolean((!suppliedName && cachedName) || (!suppliedAvatar && cachedAvatar)),
+  }
+}
+
+function groupEntity(openidValue: unknown, lookup?: EventLookup): EventEntity | null {
+  const openid = text(openidValue).trim()
+  if (!openid) return null
+  const cached = lookup?.group?.(openid)
+  const name = text(cached?.name).trim()
+  const avatar = text(cached?.avatar).trim()
+  return {
+    kind: 'group',
+    openid,
+    name: name || null,
+    avatar: avatar || null,
+    fromCache: Boolean(name || avatar),
+  }
 }
 
 const EVENT_TITLES: Record<string, { title: string; category: EventCategory }> = {
@@ -85,28 +184,73 @@ export function stripMentions(content: string): string {
   return content.replace(/<@!?[^>]+>/g, '').trim()
 }
 
-function messageView(type: string, data: Data, title: string): FormattedEventView {
+function messageView(
+  type: string,
+  data: Data,
+  title: string,
+  lookup?: EventLookup,
+): FormattedEventView {
   const author = record(data.author)
   const content = text(data.content)
   const attachments = Array.isArray(data.attachments) ? data.attachments : []
-  const mentions = Array.isArray(data.mentions) ? data.mentions : []
+  const rawMentions = Array.isArray(data.mentions) ? data.mentions : []
   const isGuild = type.includes('GUILD') || type === 'MESSAGE_CREATE' || type === 'AT_MESSAGE_CREATE' || type === 'DIRECT_MESSAGE_CREATE'
   const isC2c = type === 'C2C_MESSAGE_CREATE' || type === 'C2C_MSG_RECEIVE'
 
+  const authorOpenid = isGuild
+    ? author.id ?? author.user_openid
+    : isC2c
+      ? author.user_openid ?? author.id
+      : author.member_openid ?? author.id
+  const authorEntity = userEntity(
+    authorOpenid,
+    {
+      name: author.username,
+      avatar: author.avatar,
+      unionOpenid: author.union_openid,
+    },
+    lookup,
+  )
+  const group = !isGuild && !isC2c ? groupEntity(data.group_openid, lookup) : null
+  const mentionEntities = rawMentions
+    .map((item) => {
+      const mention = record(item)
+      return userEntity(
+        mention.member_openid ?? mention.user_openid ?? mention.id,
+        {
+          name: mention.username,
+          avatar: mention.avatar,
+          unionOpenid: mention.union_openid,
+          bot: mention.bot,
+        },
+        lookup,
+      )
+    })
+    .filter((entity): entity is EventEntity => entity !== null)
+
   const fieldsList = fields(
     field('消息 ID', data.id),
-    !isGuild && !isC2c ? field('群 OpenID', data.group_openid) : null,
-    isC2c ? field('用户 OpenID', author.user_openid ?? author.id) : null,
-    !isGuild && !isC2c ? field('成员 OpenID', author.member_openid ?? author.id) : null,
+    !isGuild && !isC2c ? entityField('群 OpenID', data.group_openid, group) : null,
+    isC2c ? entityField('用户 OpenID', author.user_openid ?? author.id, authorEntity) : null,
+    !isGuild && !isC2c
+      ? entityField('成员 OpenID', author.member_openid ?? author.id, authorEntity)
+      : null,
     field('Union OpenID', author.union_openid),
     isGuild ? field('频道 ID', data.guild_id) : null,
     isGuild ? field('子频道 ID', data.channel_id) : null,
-    isGuild ? field('发送者', author.username) : null,
-    isGuild ? field('发送者 ID', author.id) : null,
+    isGuild ? field('发送者', author.username, false) : null,
+    isGuild ? entityField('发送者 ID', author.id, authorEntity) : null,
     field('时间', data.timestamp),
     field('msg_seq', data.msg_seq),
     attachments.length ? field('附件', `${attachments.length} 个`) : null,
-    mentions.length ? field('提及', `${mentions.length} 个`) : null,
+    rawMentions.length
+      ? {
+          label: '提及',
+          value: `${rawMentions.length} 个`,
+          mono: true,
+          entities: mentionEntities.filter((entity) => entity.name),
+        }
+      : null,
   )
 
   const displayed = stripMentions(content)
@@ -116,6 +260,9 @@ function messageView(type: string, data: Data, title: string): FormattedEventVie
     category: 'message',
     fields: fieldsList,
     content: displayed,
+    group,
+    author: authorEntity,
+    mentions: mentionEntities,
     raw: data,
   }
 }
@@ -140,7 +287,7 @@ function genericView(data: Data, title: string, category: EventCategory): Format
   }
 }
 
-export function formatEvent(event: GatewayEvent): FormattedEventView {
+export function formatEvent(event: GatewayEvent, lookup?: EventLookup): FormattedEventView {
   const type = event.type || 'UNKNOWN'
   const data = record(event.data)
   const meta = EVENT_TITLES[type]
@@ -155,7 +302,7 @@ export function formatEvent(event: GatewayEvent): FormattedEventView {
     case 'MESSAGE_CREATE':
     case 'AT_MESSAGE_CREATE':
     case 'DIRECT_MESSAGE_CREATE':
-      return messageView(type, data, title)
+      return messageView(type, data, title, lookup)
     case 'GROUP_ADD_ROBOT':
     case 'GROUP_DEL_ROBOT':
       return {

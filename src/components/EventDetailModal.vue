@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { GatewayEvent } from '@/types'
-import { formatEvent, eventCategory, prettyJson } from '@/lib/events'
+import { formatEvent, eventCategory, prettyJson, type EventEntity, type EventLookup } from '@/lib/events'
 import { formatDateTime } from '@/lib/format'
+import { app, findGroup, findUser } from '@/stores/app'
 import Modal from './Modal.vue'
 import JsonView from './JsonView.vue'
+import Avatar from './Avatar.vue'
 import { Check, Copy } from 'lucide-vue-next'
 
 const props = defineProps<{ event: GatewayEvent }>()
@@ -13,7 +15,22 @@ const emit = defineEmits<{ close: [] }>()
 const tab = ref<'formatted' | 'raw'>('formatted')
 const copied = ref(false)
 
-const view = computed(() => formatEvent(props.event))
+const lookup = computed<EventLookup>(() => ({
+  appId: app.credentials?.appId,
+  user: findUser,
+  group: findGroup,
+}))
+
+const view = computed(() => formatEvent(props.event, lookup.value))
+
+/** Hover text for an author / group / mention badge. */
+function entityTitle(entity: EventEntity): string {
+  const parts = [entity.openid]
+  if (entity.unionOpenid) parts.push(`Union ${entity.unionOpenid}`)
+  if (entity.fromCache) parts.push('本地缓存')
+  return parts.join(' · ')
+}
+
 const raw = computed(() => prettyJson(props.event.data))
 const full = computed(() =>
   prettyJson({
@@ -72,10 +89,35 @@ async function copy(kind: 'data' | 'full') {
     <div v-if="tab === 'formatted'" class="formatted">
       <p v-if="view.content" class="content">{{ view.content }}</p>
       <p v-else class="content muted">{{ view.subtitle || '（无文本内容）' }}</p>
+
       <dl class="fields">
         <template v-for="field in view.fields" :key="field.label">
           <dt>{{ field.label }}</dt>
-          <dd :class="{ mono: field.mono }">{{ field.value }}</dd>
+          <dd :class="{ mono: field.mono }">
+            <span class="field-value">{{ field.value }}</span>
+            <span
+              v-if="field.entity && field.entity.name"
+              class="chip"
+              :title="entityTitle(field.entity)"
+            >
+              <Avatar
+                :name="field.entity.name"
+                :src="field.entity.avatar"
+                :kind="field.entity.kind"
+                :size="14"
+              />
+              <span class="chip-name">{{ field.entity.name }}</span>
+            </span>
+            <span
+              v-for="(entity, index) in field.entities ?? []"
+              :key="`${entity.openid}-${index}`"
+              class="chip"
+              :title="entityTitle(entity)"
+            >
+              <Avatar :name="entity.name" :src="entity.avatar" :kind="entity.kind" :size="14" />
+              <span class="chip-name">{{ entity.name }}</span>
+            </span>
+          </dd>
         </template>
       </dl>
     </div>
@@ -210,6 +252,28 @@ async function copy(kind: 'data' | 'full') {
   color: var(--ink-3);
 }
 
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  max-width: 260px;
+  padding: 0 8px 0 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+}
+
+.chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fields {
   display: grid;
   grid-template-columns: 112px minmax(0, 1fr);
@@ -223,8 +287,16 @@ async function copy(kind: 'data' | 'full') {
 }
 
 .fields dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
   margin: 0;
   color: var(--ink-2);
+  word-break: break-all;
+}
+
+.field-value {
   word-break: break-all;
 }
 
