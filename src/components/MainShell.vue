@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { app, botLabel, setPage } from '@/stores/app'
 import type { PageKey } from '@/types'
 import BrandMark from './BrandMark.vue'
@@ -9,7 +9,36 @@ import SendPage from './SendPage.vue'
 import ReceivePage from './ReceivePage.vue'
 import CachePage from './CachePage.vue'
 import SettingsModal from './SettingsModal.vue'
-import { Activity, Database, Inbox, Send, Settings } from 'lucide-vue-next'
+import {
+  Activity,
+  Database,
+  Inbox,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Send,
+  Settings,
+} from 'lucide-vue-next'
+
+const SIDEBAR_KEY = 'qbotwire.sidebar.collapsed'
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const sidebarCollapsed = ref(readSidebarCollapsed())
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  try {
+    localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed.value ? '1' : '0')
+  } catch {
+    /* storage may be unavailable (private mode); the toggle still works this session */
+  }
+}
 
 const pages: Array<{
   key: PageKey
@@ -77,7 +106,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div class="shell">
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="brand">
         <BrandMark :size="30" />
         <div class="brand-text">
@@ -94,6 +123,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           type="button"
           class="nav-item"
           :class="{ active: app.page === page.key }"
+          :title="page.label"
           @click="setPage(page.key)"
         >
           <component :is="page.icon" :size="17" class="nav-icon" />
@@ -105,7 +135,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
       <div class="sidebar-spacer" />
 
-      <div class="bot-card" :class="app.status.state">
+      <div class="bot-card" :class="app.status.state" :title="app.status.bot?.username || botLabel">
         <div class="bot-top">
           <Avatar
             :name="app.status.bot?.username || botLabel"
@@ -139,9 +169,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
     <div class="main">
       <header class="topbar">
-        <div class="title-block">
-          <h1>{{ current.title }}</h1>
-          <p>{{ current.subtitle }}</p>
+        <div class="topbar-left">
+          <button
+            class="top-icon"
+            type="button"
+            :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            :aria-expanded="!sidebarCollapsed"
+            aria-controls="sidebar"
+            @click="toggleSidebar"
+          >
+            <component :is="sidebarCollapsed ? PanelLeftOpen : PanelLeftClose" :size="17" />
+          </button>
+          <div class="title-block">
+            <h1>{{ current.title }}</h1>
+            <p>{{ current.subtitle }}</p>
+          </div>
         </div>
         <div class="top-actions">
           <span v-if="app.mode === 'mock'" class="preview-badge">浏览器预览 · 模拟数据</span>
@@ -191,6 +234,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   padding: 14px 12px 12px;
   background: linear-gradient(180deg, #fbfcff 0%, #f7f9fd 100%);
   border-right: 1px solid var(--line);
+  overflow: hidden;
+  transition: width 0.18s ease, padding 0.18s ease;
+}
+
+.sidebar.collapsed {
+  width: 68px;
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .brand {
@@ -397,6 +448,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   color: #b3bccb;
 }
 
+.sidebar.collapsed .brand {
+  justify-content: center;
+  padding: 4px 0 16px;
+}
+
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-text,
+.sidebar.collapsed .nav-badge,
+.sidebar.collapsed .sidebar-foot,
+.sidebar.collapsed .bot-meta,
+.sidebar.collapsed .gear,
+.sidebar.collapsed .bot-bottom {
+  display: none;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.collapsed .nav-indicator {
+  left: -10px;
+}
+
+.sidebar.collapsed .bot-card {
+  align-items: center;
+  padding: 6px;
+}
+
+.sidebar.collapsed .bot-top {
+  justify-content: center;
+  gap: 0;
+}
+
 .main {
   flex: 1;
   min-width: 0;
@@ -416,6 +502,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(8px);
   flex: none;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .title-block {
@@ -462,6 +555,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .top-icon {
   width: 32px;
   height: 32px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
