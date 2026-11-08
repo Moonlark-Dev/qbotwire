@@ -52,6 +52,7 @@ function fields(...items: Array<FormattedField | null>): FormattedField[] {
 
 const EVENT_TITLES: Record<string, { title: string; category: EventCategory }> = {
   GROUP_AT_MESSAGE_CREATE: { title: '群聊 @ 消息', category: 'message' },
+  GROUP_MESSAGE_CREATE: { title: '群聊消息', category: 'message' },
   C2C_MESSAGE_CREATE: { title: '单聊消息', category: 'message' },
   C2C_MSG_RECEIVE: { title: '单聊消息接收', category: 'message' },
   MESSAGE_CREATE: { title: '频道消息', category: 'message' },
@@ -148,6 +149,7 @@ export function formatEvent(event: GatewayEvent): FormattedEventView {
 
   switch (type) {
     case 'GROUP_AT_MESSAGE_CREATE':
+    case 'GROUP_MESSAGE_CREATE':
     case 'C2C_MESSAGE_CREATE':
     case 'C2C_MSG_RECEIVE':
     case 'MESSAGE_CREATE':

@@ -66,6 +66,7 @@ impl CacheStore {
         let message_event = matches!(
             event_type,
             "GROUP_AT_MESSAGE_CREATE"
+                | "GROUP_MESSAGE_CREATE"
                 | "C2C_MESSAGE_CREATE"
                 | "C2C_MSG_RECEIVE"
                 | "MESSAGE_CREATE"
@@ -74,7 +75,7 @@ impl CacheStore {
         );
 
         match event_type {
-            "GROUP_AT_MESSAGE_CREATE" => {
+            "GROUP_AT_MESSAGE_CREATE" | "GROUP_MESSAGE_CREATE" => {
                 if let Some(group_openid) = get_str(data, "group_openid") {
                     let name = get_str(data, "group_name");
                     let avatar = get_str(data, "group_avatar").or_else(|| get_str(data, "avatar"));
@@ -413,6 +414,50 @@ mod tests {
         assert_eq!(snapshot.users.len(), 1);
         assert_eq!(snapshot.users[0].openid, "u-1");
         assert_eq!(snapshot.users[0].union_openid.as_deref(), Some("union-1"));
+        assert_eq!(snapshot.users[0].message_count, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ingests_plain_group_messages_into_groups_and_users() {
+        let dir = temp_dir("group-plain");
+        let cache = CacheStore::open(&dir).unwrap();
+        let changed = cache
+            .ingest_event(
+                "GROUP_MESSAGE_CREATE",
+                &json!({
+                    "author": {
+                        "bot": false,
+                        "id": "u-10",
+                        "member_openid": "u-10",
+                        "member_role": "admin",
+                        "union_openid": "union-10",
+                        "username": "SunaōkamiNya"
+                    },
+                    "content": "test",
+                    "group_id": "g-10",
+                    "group_openid": "g-10",
+                    "id": "ROBOT1.0_msg",
+                    "message_scene": {
+                        "ext": ["msg_idx=REFIDX_x", "auth_token=y"],
+                        "source": "default"
+                    },
+                    "message_type": 0,
+                    "timestamp": "2026-11-08T08:20:43+08:00"
+                }),
+            )
+            .unwrap();
+        assert!(changed);
+        let snapshot = cache.snapshot();
+        assert_eq!(snapshot.groups.len(), 1);
+        assert_eq!(snapshot.groups[0].openid, "g-10");
+        assert_eq!(snapshot.groups[0].message_count, 1);
+        assert_eq!(snapshot.groups[0].source.as_deref(), Some("GROUP_MESSAGE_CREATE"));
+        assert!(cache.needs_group_info("g-10"));
+        assert_eq!(snapshot.users.len(), 1);
+        assert_eq!(snapshot.users[0].openid, "u-10");
+        assert_eq!(snapshot.users[0].name.as_deref(), Some("SunaōkamiNya"));
+        assert_eq!(snapshot.users[0].union_openid.as_deref(), Some("union-10"));
         assert_eq!(snapshot.users[0].message_count, 1);
         let _ = fs::remove_dir_all(&dir);
     }

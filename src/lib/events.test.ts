@@ -44,6 +44,33 @@ describe('formatEvent', () => {
     expect(view.fields.find((field) => field.label === '附件')?.value).toBe('1 个')
   })
 
+  it('formats a plain group message as a group message', () => {
+    const view = formatEvent(
+      event('GROUP_MESSAGE_CREATE', {
+        id: 'msg-10',
+        content: 'test',
+        group_id: 'group-10',
+        group_openid: 'group-10',
+        author: {
+          id: 'member-10',
+          member_openid: 'member-10',
+          union_openid: 'union-10',
+          username: 'SunaōkamiNya',
+        },
+        timestamp: '2026-11-08T08:20:43+08:00',
+      }),
+    )
+    expect(view.title).toBe('群聊消息')
+    expect(view.category).toBe('message')
+    expect(view.subtitle).toBe('test')
+    expect(view.fields.find((field) => field.label === '群 OpenID')?.value).toBe(
+      'group-10',
+    )
+    expect(view.fields.find((field) => field.label === '成员 OpenID')?.value).toBe(
+      'member-10',
+    )
+  })
+
   it('formats a c2c message', () => {
     const view = formatEvent(
       event('C2C_MESSAGE_CREATE', {

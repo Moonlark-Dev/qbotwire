@@ -70,7 +70,7 @@ watch(selectedEntry, (entry) => {
 
 function sourceLabel(source: string | null | undefined): string {
   if (!source) return '事件'
-  if (source.includes('GROUP_AT_MESSAGE')) return '群消息'
+  if (source.includes('GROUP_AT_MESSAGE') || source.includes('GROUP_MESSAGE')) return '群消息'
   if (source.includes('C2C')) return '单聊'
   if (source.includes('FRIEND')) return '好友'
   if (source.includes('GROUP_ADD') || source.includes('GROUP_DEL')) return '入群'
