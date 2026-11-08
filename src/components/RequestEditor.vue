@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { RequestTab } from '@/lib/request'
 import { methodAllowsBody, pathParamNames } from '@/lib/request'
 import { getEndpoint, type IdKind } from '@/lib/apiCatalog'
 import { app, updateSettings } from '@/stores/app'
 import IdPicker from './IdPicker.vue'
 import KeyValueEditor from './KeyValueEditor.vue'
-import { Bookmark, Braces, ExternalLink, Play, RotateCcw, Save, Trash2 } from 'lucide-vue-next'
+import OpenIdInsertModal from './OpenIdInsertModal.vue'
+import {
+  Bookmark,
+  Braces,
+  ExternalLink,
+  Play,
+  RotateCcw,
+  Save,
+  Trash2,
+  UserRoundPlus,
+} from 'lucide-vue-next'
 
 const props = defineProps<{ tab: RequestTab; sending: boolean }>()
 
@@ -17,6 +27,10 @@ const emit = defineEmits<{
 }>()
 
 const bodyError = ref<string | null>(null)
+const bodyInput = ref<HTMLTextAreaElement | null>(null)
+const insertOpen = ref(false)
+/** 最近一次在请求体里观察到的光标位置，用于「插入 OpenID」。 */
+const caret = ref<{ start: number; end: number } | null>(null)
 
 const endpoint = computed(() =>
   props.tab.endpointId ? getEndpoint(props.tab.endpointId) : undefined,
@@ -109,6 +123,46 @@ function formatBody() {
 function clearBody() {
   props.tab.body = ''
   bodyError.value = null
+  caret.value = null
+}
+
+function rememberCaret() {
+  const el = bodyInput.value
+  if (!el) return
+  // 还没点进过输入框时 selectionStart 恒为 0，此时按「追加到末尾」处理更符合直觉。
+  if (document.activeElement !== el) {
+    caret.value = { start: el.value.length, end: el.value.length }
+    return
+  }
+  caret.value = { start: el.selectionStart ?? el.value.length, end: el.selectionEnd ?? el.value.length }
+}
+
+function openIdPicker() {
+  rememberCaret()
+  insertOpen.value = true
+}
+
+function onBodyInput() {
+  bodyError.value = null
+  rememberCaret()
+}
+
+function insertOpenId(openid: string) {
+  const text = props.tab.body
+  const observed = caret.value ?? { start: text.length, end: text.length }
+  const start = Math.max(0, Math.min(observed.start, text.length))
+  const end = Math.max(start, Math.min(observed.end, text.length))
+  props.tab.body = `${text.slice(0, start)}${openid}${text.slice(end)}`
+  bodyError.value = null
+  insertOpen.value = false
+  const position = start + openid.length
+  caret.value = { start: position, end: position }
+  void nextTick(() => {
+    const el = bodyInput.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(position, position)
+  })
 }
 
 function resetTemplate() {
@@ -224,6 +278,15 @@ async function toggleAutoSave(event: Event) {
           </span>
         </span>
         <div class="section-actions">
+          <button
+            class="link-btn"
+            type="button"
+            title="从缓存中选择用户或群聊，在光标处插入 OpenID"
+            @mousedown.prevent
+            @click="openIdPicker"
+          >
+            <UserRoundPlus :size="11" /> 插入 OpenID
+          </button>
           <button class="link-btn" type="button" @click="formatBody">
             <Braces :size="11" /> 格式化
           </button>
@@ -232,16 +295,22 @@ async function toggleAutoSave(event: Event) {
       </div>
       <div class="body-wrap">
         <textarea
+          ref="bodyInput"
           v-model="tab.body"
           class="textarea body-input"
           spellcheck="false"
           placeholder="{&#10;  &quot;content&quot;: &quot;你好&quot;&#10;}"
-          @input="bodyError = null"
+          @input="onBodyInput"
+          @click="rememberCaret"
+          @keyup="rememberCaret"
+          @select="rememberCaret"
         />
         <span class="body-count mono">{{ tab.body.length }} chars</span>
       </div>
       <p v-if="bodyError" class="body-error">JSON 解析失败：{{ bodyError }}</p>
     </div>
+
+    <OpenIdInsertModal v-if="insertOpen" @pick="insertOpenId" @close="insertOpen = false" />
 
     <div class="save-row">
       <div v-if="canSave" class="save-left">
