@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CATALOG, CATEGORIES, type CatalogEndpoint } from '@/lib/apiCatalog'
+import { openExternal } from '@/lib/external'
 import { scrollFromWheel } from '@/lib/scroll'
 import type { SavedEndpoint } from '@/types'
 import { Bookmark, Search, Trash2 } from 'lucide-vue-next'
@@ -19,6 +20,8 @@ const emit = defineEmits<{
 const search = ref('')
 const category = ref('全部')
 const chips = ref<HTMLElement | null>(null)
+
+const DOCS_URL = 'https://bot.q.qq.com/wiki/develop/api-v2/'
 
 const categories = computed(() => ['全部', ...CATEGORIES])
 const filteredSaved = computed(() => {
@@ -64,6 +67,11 @@ function methodClass(method: string) {
 
 function onChipsWheel(event: WheelEvent) {
   scrollFromWheel(event, chips.value)
+}
+
+function openDocs(event: MouseEvent) {
+  event.preventDefault()
+  openExternal(DOCS_URL)
 }
 
 onMounted(() => {
@@ -177,7 +185,7 @@ onBeforeUnmount(() => {
     </div>
 
     <footer class="catalog-foot">
-      <a href="https://bot.q.qq.com/wiki/develop/api-v2/" target="_blank" rel="noreferrer">
+      <a :href="DOCS_URL" target="_blank" rel="noreferrer" @click="openDocs">
         QQ Bot API v2 文档
       </a>
       <span class="mono">{{ savedCount }} saved</span>

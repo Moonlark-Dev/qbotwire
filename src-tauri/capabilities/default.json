@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "Default capability for the main QBotWire window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://bot.q.qq.com/**" }]
+    }
+  ]
 }

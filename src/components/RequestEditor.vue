@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import type { RequestTab } from '@/lib/request'
 import { methodAllowsBody, pathParamNames } from '@/lib/request'
 import { getEndpoint, type IdKind } from '@/lib/apiCatalog'
+import { openExternal } from '@/lib/external'
 import { app, updateSettings } from '@/stores/app'
 import IdPicker from './IdPicker.vue'
 import KeyValueEditor from './KeyValueEditor.vue'
@@ -35,6 +36,13 @@ const caret = ref<{ start: number; end: number } | null>(null)
 const endpoint = computed(() =>
   props.tab.endpointId ? getEndpoint(props.tab.endpointId) : undefined,
 )
+
+const DOCS_URL = 'https://bot.q.qq.com/wiki/develop/api-v2/'
+
+function openDocs(event: MouseEvent) {
+  event.preventDefault()
+  openExternal(DOCS_URL)
+}
 
 const params = computed(() =>
   pathParamNames(props.tab.path).map((name) => {
@@ -231,9 +239,10 @@ async function toggleAutoSave(event: Event) {
         </button>
         <a
           class="link-btn"
-          :href="`https://bot.q.qq.com/wiki/develop/api-v2/`"
+          :href="DOCS_URL"
           target="_blank"
           rel="noreferrer"
+          @click="openDocs"
         >
           文档 <ExternalLink :size="10" />
         </a>
