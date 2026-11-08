@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CATALOG, CATEGORIES, type CatalogEndpoint } from '@/lib/apiCatalog'
+import { scrollFromWheel } from '@/lib/scroll'
 import type { SavedEndpoint } from '@/types'
 import { Bookmark, Search, Trash2 } from 'lucide-vue-next'
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 
 const search = ref('')
 const category = ref('全部')
+const chips = ref<HTMLElement | null>(null)
 
 const categories = computed(() => ['全部', ...CATEGORIES])
 const filteredSaved = computed(() => {
@@ -59,6 +61,18 @@ const savedCount = computed(() => props.saved.length)
 function methodClass(method: string) {
   return `method-${method.toLowerCase()}`
 }
+
+function onChipsWheel(event: WheelEvent) {
+  scrollFromWheel(event, chips.value)
+}
+
+onMounted(() => {
+  chips.value?.addEventListener('wheel', onChipsWheel, { passive: false })
+})
+
+onBeforeUnmount(() => {
+  chips.value?.removeEventListener('wheel', onChipsWheel)
+})
 </script>
 
 <template>
@@ -80,7 +94,7 @@ function methodClass(method: string) {
         <kbd v-if="!search">/</kbd>
         <button v-else class="clear" type="button" @click="search = ''">清除</button>
       </div>
-      <div class="chips">
+      <div ref="chips" class="chips">
         <button
           v-for="item in categories"
           :key="item"
@@ -265,6 +279,7 @@ kbd {
   display: flex;
   gap: 4px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding-bottom: 2px;
   scrollbar-width: none;
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { RequestTab } from '@/lib/request'
+import { scrollFromWheel } from '@/lib/scroll'
 import { Bookmark, Plus, X } from 'lucide-vue-next'
 
 const props = defineProps<{ tabs: RequestTab[]; activeId: string }>()
@@ -30,14 +31,7 @@ function revealActiveTab(behavior: ScrollBehavior = 'smooth') {
 
 /** A plain vertical wheel over the strip scrolls it horizontally. */
 function onWheel(event: WheelEvent) {
-  const box = scroller.value
-  if (!box) return
-  // Trackpads and Shift+wheel already produce deltaX; leave those to the browser.
-  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-  if (box.scrollWidth <= box.clientWidth) return
-  event.preventDefault()
-  const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
-  box.scrollBy({ left: delta })
+  scrollFromWheel(event, scroller.value)
 }
 
 watch(
