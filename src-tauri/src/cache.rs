@@ -452,7 +452,10 @@ mod tests {
         assert_eq!(snapshot.groups.len(), 1);
         assert_eq!(snapshot.groups[0].openid, "g-10");
         assert_eq!(snapshot.groups[0].message_count, 1);
-        assert_eq!(snapshot.groups[0].source.as_deref(), Some("GROUP_MESSAGE_CREATE"));
+        assert_eq!(
+            snapshot.groups[0].source.as_deref(),
+            Some("GROUP_MESSAGE_CREATE")
+        );
         assert!(cache.needs_group_info("g-10"));
         assert_eq!(snapshot.users.len(), 1);
         assert_eq!(snapshot.users[0].openid, "u-10");
