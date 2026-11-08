@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { app, findGroup, findUser } from '@/stores/app'
 import type { IdKind } from '@/lib/apiCatalog'
+import { resolveUserAvatar } from '@/lib/avatar'
 import Avatar from './Avatar.vue'
 import { ChevronDown, Search } from 'lucide-vue-next'
 
@@ -35,7 +36,7 @@ const candidates = computed(() => {
     return app.cache.users.map((user) => ({
       openid: user.openid,
       name: user.name || '未命名用户',
-      avatar: user.avatar,
+      avatar: resolveUserAvatar(app.credentials?.appId, user),
       kind: 'user' as const,
     }))
   }

@@ -9,6 +9,7 @@ import {
   toast,
 } from '@/stores/app'
 import { formatDateTime, formatRelative } from '@/lib/format'
+import { resolveUserAvatar } from '@/lib/avatar'
 import Avatar from './Avatar.vue'
 import Modal from './Modal.vue'
 import {
@@ -208,7 +209,7 @@ async function confirmClearNow() {
         >
           <Avatar
             :name="entry.name"
-            :src="entry.avatar"
+            :src="kind === 'group' ? entry.avatar : resolveUserAvatar(app.credentials?.appId, entry)"
             :kind="kind === 'group' ? 'group' : 'user'"
             :size="40"
           />
@@ -242,7 +243,11 @@ async function confirmClearNow() {
         <div class="detail-top">
           <Avatar
             :name="selectedEntry.name"
-            :src="selectedEntry.avatar"
+            :src="
+              detail.kind === 'group'
+                ? selectedEntry.avatar
+                : resolveUserAvatar(app.credentials?.appId, selectedEntry)
+            "
             :kind="detail.kind === 'group' ? 'group' : 'user'"
             :size="56"
           />

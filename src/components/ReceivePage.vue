@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { app, clearEvents, findGroup, findUser, toast } from '@/stores/app'
 import { formatEvent, eventCategory, prettyJson } from '@/lib/events'
 import { formatClock, truncate } from '@/lib/format'
+import { resolveUserAvatar } from '@/lib/avatar'
 import { backend } from '@/lib/backend'
 import type { GatewayEvent } from '@/types'
 import EventDetailModal from './EventDetailModal.vue'
@@ -136,7 +137,10 @@ function authorOf(event: GatewayEvent) {
   return {
     name: String(author.username ?? cached?.name ?? '') || openid,
     openid,
-    avatar: (author.avatar as string | undefined) ?? cached?.avatar ?? null,
+    avatar: resolveUserAvatar(app.credentials?.appId, {
+      openid,
+      avatar: (author.avatar as string | undefined) ?? cached?.avatar ?? null,
+    }),
   }
 }
 
