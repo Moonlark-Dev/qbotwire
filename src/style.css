@@ -247,6 +247,16 @@ a:hover {
   padding-right: 28px;
 }
 
+/* Native password affordances ------------------------------------------- */
+/* Chromium builds with the Edge password UI (Microsoft Edge itself and the
+   Windows WebView2 runtime Tauri uses) paint their own "reveal password" eye
+   inside every `type="password"` input. CredentialForm draws its own toggle,
+   so the built-in one shows up as a second eye beside it. Hide it: the
+   pseudo-element is Edge-only, so this is a no-op in other engines. */
+input[type='password']::-ms-reveal {
+  display: none;
+}
+
 .mono {
   font-family: var(--font-mono);
 }
