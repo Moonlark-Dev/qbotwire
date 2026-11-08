@@ -1,19 +1,65 @@
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { RequestTab } from '@/lib/request'
 import { Bookmark, Plus, X } from 'lucide-vue-next'
 
-defineProps<{ tabs: RequestTab[]; activeId: string }>()
+const props = defineProps<{ tabs: RequestTab[]; activeId: string }>()
 
 const emit = defineEmits<{
   select: [id: string]
   close: [id: string]
   add: []
 }>()
+
+const scroller = ref<HTMLElement | null>(null)
+
+/** Keep the selected tab visible when tabs are added or switched. */
+function revealActiveTab(behavior: ScrollBehavior = 'smooth') {
+  const box = scroller.value
+  if (!box) return
+  const active = box.querySelector<HTMLElement>('.tab.active')
+  if (!active) return
+  const boxRect = box.getBoundingClientRect()
+  const tabRect = active.getBoundingClientRect()
+  if (tabRect.left < boxRect.left) {
+    box.scrollBy({ left: tabRect.left - boxRect.left, behavior })
+  } else if (tabRect.right > boxRect.right) {
+    box.scrollBy({ left: tabRect.right - boxRect.right, behavior })
+  }
+}
+
+/** A plain vertical wheel over the strip scrolls it horizontally. */
+function onWheel(event: WheelEvent) {
+  const box = scroller.value
+  if (!box) return
+  // Trackpads and Shift+wheel already produce deltaX; leave those to the browser.
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  if (box.scrollWidth <= box.clientWidth) return
+  event.preventDefault()
+  const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
+  box.scrollBy({ left: delta })
+}
+
+watch(
+  () => props.activeId,
+  () => {
+    void nextTick(() => revealActiveTab())
+  },
+)
+
+onMounted(() => {
+  scroller.value?.addEventListener('wheel', onWheel, { passive: false })
+  void nextTick(() => revealActiveTab('auto'))
+})
+
+onBeforeUnmount(() => {
+  scroller.value?.removeEventListener('wheel', onWheel)
+})
 </script>
 
 <template>
   <div class="tabs-bar">
-    <div class="tabs-scroll">
+    <div ref="scroller" class="tabs-scroll">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -63,6 +109,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: 4px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   min-width: 0;
   scrollbar-width: none;
   height: 100%;
