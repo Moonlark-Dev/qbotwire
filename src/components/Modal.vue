@@ -1,3 +1,7 @@
+<script lang="ts">
+const modalStack: symbol[] = []
+</script>
+
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 
@@ -7,13 +11,24 @@ withDefaults(defineProps<{ width?: string; persistent?: boolean }>(), {
 })
 
 const emit = defineEmits<{ close: [] }>()
+const modalToken = Symbol('modal')
 
 function onKey(event: KeyboardEvent) {
-  if (event.key === 'Escape') emit('close')
+  if (event.key === 'Escape' && modalStack[modalStack.length - 1] === modalToken) {
+    event.stopImmediatePropagation()
+    emit('close')
+  }
 }
 
-onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onMounted(() => {
+  modalStack.push(modalToken)
+  window.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  const index = modalStack.lastIndexOf(modalToken)
+  if (index >= 0) modalStack.splice(index, 1)
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>

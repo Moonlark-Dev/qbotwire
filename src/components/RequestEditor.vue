@@ -7,6 +7,7 @@ import { openExternal } from '@/lib/external'
 import { app, updateSettings } from '@/stores/app'
 import IdPicker from './IdPicker.vue'
 import KeyValueEditor from './KeyValueEditor.vue'
+import MessageBuilderModal from './MessageBuilderModal.vue'
 import OpenIdInsertModal from './OpenIdInsertModal.vue'
 import {
   Bookmark,
@@ -15,6 +16,7 @@ import {
   Play,
   RotateCcw,
   Save,
+  Sparkles,
   Trash2,
   UserRoundPlus,
 } from 'lucide-vue-next'
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 
 const bodyError = ref<string | null>(null)
 const bodyInput = ref<HTMLTextAreaElement | null>(null)
+const builderOpen = ref(false)
 const insertOpen = ref(false)
 /** 最近一次在请求体里观察到的光标位置，用于「插入 OpenID」。 */
 const caret = ref<{ start: number; end: number } | null>(null)
@@ -148,6 +151,13 @@ function rememberCaret() {
 function openIdPicker() {
   rememberCaret()
   insertOpen.value = true
+}
+
+function applyBuiltBody(body: string) {
+  props.tab.body = body
+  bodyError.value = null
+  caret.value = null
+  builderOpen.value = false
 }
 
 function onBodyInput() {
@@ -290,6 +300,14 @@ async function toggleAutoSave(event: Event) {
           <button
             class="link-btn"
             type="button"
+            title="可视化构造 QQ Bot 消息请求体"
+            @click="builderOpen = true"
+          >
+            <Sparkles :size="11" /> 消息构造器
+          </button>
+          <button
+            class="link-btn"
+            type="button"
             title="从缓存中选择用户或群聊，在光标处插入 OpenID"
             @mousedown.prevent
             @click="openIdPicker"
@@ -318,6 +336,14 @@ async function toggleAutoSave(event: Event) {
       </div>
       <p v-if="bodyError" class="body-error">JSON 解析失败：{{ bodyError }}</p>
     </div>
+
+    <MessageBuilderModal
+      v-if="builderOpen"
+      :path="tab.path"
+      :body="tab.body"
+      @apply="applyBuiltBody"
+      @close="builderOpen = false"
+    />
 
     <OpenIdInsertModal v-if="insertOpen" @pick="insertOpenId" @close="insertOpen = false" />
 

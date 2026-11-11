@@ -208,6 +208,7 @@ async function deleteActiveSaved() {
 
 function onKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    if (document.querySelector('.modal-backdrop')) return
     event.preventDefault()
     void send()
   }
