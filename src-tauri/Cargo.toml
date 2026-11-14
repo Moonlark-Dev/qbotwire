@@ -1,6 +1,6 @@
 [package]
 name = "qbotwire"
-version = "1.0.0"
+version = "1.0.1"
 description = "A desktop workbench for the Tencent QQ Bot API v2"
 authors = ["Moonlark"]
 license = "AGPL-3.0-or-later"
