@@ -5,6 +5,8 @@
  * before sending. Body strings are only templates and stay editable.
  * Reference: https://bot.q.qq.com/wiki/develop/api-v2/
  */
+import type { MessageScope } from './messageBuilder'
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export type IdKind = 'group' | 'user' | 'guild' | 'channel' | 'generic'
 
@@ -34,6 +36,8 @@ export interface CatalogEndpoint {
   auth: boolean
   /** Token endpoint: appId/clientSecret are filled in automatically. */
   token?: boolean
+  /** Send-message endpoint: the body can be built with the message modal. */
+  message?: MessageScope
 }
 
 export const CATALOG: CatalogEndpoint[] = [
@@ -99,6 +103,7 @@ export const CATALOG: CatalogEndpoint[] = [
     query: [],
     body: "{\"content\": \"你好，QBotWire\", \"msg_type\": 0, \"msg_id\": \"\", \"msg_seq\": 1}",
     auth: true,
+    message: 'group',
   },
   {
     id: 'group.delete_message',
@@ -128,6 +133,7 @@ export const CATALOG: CatalogEndpoint[] = [
     query: [],
     body: "{\"content\": \"你好，QBotWire\", \"msg_type\": 0, \"msg_id\": \"\", \"msg_seq\": 1}",
     auth: true,
+    message: 'c2c',
   },
   {
     id: 'c2c.delete_message',
@@ -444,6 +450,7 @@ export const CATALOG: CatalogEndpoint[] = [
     ],
     body: "{\"content\": \"你好，QBotWire\"}",
     auth: true,
+    message: 'channel',
   },
   {
     id: 'guild.channel.create',
@@ -638,6 +645,7 @@ export const CATALOG: CatalogEndpoint[] = [
     query: [],
     body: "{\"content\": \"你好，QBotWire\"}",
     auth: true,
+    message: 'dm',
   },
   {
     id: 'dms.recall',

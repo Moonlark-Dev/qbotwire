@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG, CATEGORIES, getEndpoint } from './apiCatalog'
 import type { HttpMethod } from './apiCatalog'
+import { messageScopeForPath } from './messageBuilder'
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
@@ -49,5 +50,20 @@ describe('API catalogue', () => {
     const token = getEndpoint('app.access_token')
     expect(token?.token).toBe(true)
     expect(token?.auth).toBe(false)
+  })
+
+  it('marks every send-message endpoint with a matching message scope', () => {
+    const senders = CATALOG.filter((endpoint) => endpoint.message)
+    expect(senders.map((endpoint) => endpoint.id)).toEqual(
+      expect.arrayContaining([
+        'group.send_message',
+        'c2c.send_message',
+        'channel.send_message',
+        'dms.send',
+      ]),
+    )
+    for (const endpoint of senders) {
+      expect(messageScopeForPath(endpoint.method, endpoint.path)).toBe(endpoint.message)
+    }
   })
 })

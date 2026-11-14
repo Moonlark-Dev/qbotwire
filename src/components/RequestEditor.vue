@@ -3,10 +3,12 @@ import { computed, nextTick, ref } from 'vue'
 import type { RequestTab } from '@/lib/request'
 import { methodAllowsBody, pathParamNames } from '@/lib/request'
 import { getEndpoint, type IdKind } from '@/lib/apiCatalog'
+import { messageScopeForPath, type MessageScope } from '@/lib/messageBuilder'
 import { openExternal } from '@/lib/external'
 import { app, updateSettings } from '@/stores/app'
 import IdPicker from './IdPicker.vue'
 import KeyValueEditor from './KeyValueEditor.vue'
+import MessageBuilderModal from './MessageBuilderModal.vue'
 import OpenIdInsertModal from './OpenIdInsertModal.vue'
 import {
   Bookmark,
@@ -17,6 +19,7 @@ import {
   Save,
   Trash2,
   UserRoundPlus,
+  Wand2,
 } from 'lucide-vue-next'
 
 const props = defineProps<{ tab: RequestTab; sending: boolean }>()
@@ -30,12 +33,23 @@ const emit = defineEmits<{
 const bodyError = ref<string | null>(null)
 const bodyInput = ref<HTMLTextAreaElement | null>(null)
 const insertOpen = ref(false)
+const builderOpen = ref(false)
 /** 最近一次在请求体里观察到的光标位置，用于「插入 OpenID」。 */
 const caret = ref<{ start: number; end: number } | null>(null)
 
 const endpoint = computed(() =>
   props.tab.endpointId ? getEndpoint(props.tab.endpointId) : undefined,
 )
+
+/**
+ * 发送消息接口（群聊 / 单聊 / 频道 / 私信）可以用表单构造请求体。
+ * 内置目录靠元数据识别，自定义请求靠路径识别。
+ */
+const messageScope = computed<MessageScope | null>(() => {
+  const known = endpoint.value?.message
+  if (known) return known
+  return messageScopeForPath(props.tab.method, props.tab.path)
+})
 
 const DOCS_URL = 'https://bot.q.qq.com/wiki/develop/api-v2/'
 
@@ -187,6 +201,14 @@ function resetTemplate() {
   bodyError.value = null
 }
 
+/** 消息构造弹窗回填：整体覆盖请求体，和弹窗里的预览保持一致。 */
+function applyMessage(body: Record<string, unknown>) {
+  props.tab.body = JSON.stringify(body, null, 2)
+  bodyError.value = null
+  caret.value = null
+  builderOpen.value = false
+}
+
 async function toggleAutoSave(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
   await updateSettings({ ...app.settings, autoSaveOnSuccess: checked })
@@ -288,6 +310,15 @@ async function toggleAutoSave(event: Event) {
         </span>
         <div class="section-actions">
           <button
+            v-if="messageScope"
+            class="link-btn"
+            type="button"
+            title="用表单构造消息请求体"
+            @click="builderOpen = true"
+          >
+            <Wand2 :size="11" /> 构造消息
+          </button>
+          <button
             class="link-btn"
             type="button"
             title="从缓存中选择用户或群聊，在光标处插入 OpenID"
@@ -320,6 +351,14 @@ async function toggleAutoSave(event: Event) {
     </div>
 
     <OpenIdInsertModal v-if="insertOpen" @pick="insertOpenId" @close="insertOpen = false" />
+
+    <MessageBuilderModal
+      v-if="builderOpen && messageScope"
+      :scope="messageScope"
+      :body="tab.body"
+      @apply="applyMessage"
+      @close="builderOpen = false"
+    />
 
     <div class="save-row">
       <div v-if="canSave" class="save-left">

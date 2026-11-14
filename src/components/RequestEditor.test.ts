@@ -167,3 +167,40 @@ describe('RequestEditor quick OpenID insert', () => {
     expect(wrapper.find('.empty').text()).toContain('还没有用户缓存')
   })
 })
+
+describe('RequestEditor message builder', () => {
+  beforeEach(() => {
+    app.credentials = credentials
+  })
+
+  afterEach(() => {
+    wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
+    app.credentials = null
+  })
+
+  it('opens the builder for send-message paths and fills the request body', async () => {
+    const tab = makeTab('')
+    const wrapper = mountEditor(tab)
+
+    const trigger = wrapper.findAll('button').find((item) => item.text().includes('构造消息'))
+    expect(trigger).toBeTruthy()
+    await trigger!.trigger('click')
+
+    expect(wrapper.find('.builder').exists()).toBe(true)
+
+    const apply = wrapper
+      .findAll('button')
+      .find((item) => item.text().includes('填入请求体'))
+    await apply!.trigger('click')
+
+    expect(JSON.parse(tab.body)).toEqual({ content: '你好，QBotWire', msg_type: 0 })
+    expect(wrapper.find('.builder').exists()).toBe(false)
+  })
+
+  it('hides the builder for non-message requests', () => {
+    const tab = { ...makeTab(), path: '/v2/groups/{group_openid}/batch_remove_members' }
+    const wrapper = mountEditor(tab)
+
+    expect(wrapper.findAll('button').some((item) => item.text().includes('构造消息'))).toBe(false)
+  })
+})
