@@ -29,11 +29,28 @@ describe('buildMessageBody', () => {
     expect(body).toEqual({ content: 'hi', msg_type: 0, msg_id: 'MSG_1' })
   })
 
-  it('builds markdown params and ignores empty keys', () => {
+  it('builds native markdown content without a template id', () => {
+    const body = buildMessageBody(
+      draft({
+        kind: 'markdown',
+        content: 'top-level content must be empty',
+        markdownContent: '  ## 标题\n\n正文 **加粗**  ',
+      }),
+      'group',
+    )
+
+    expect(body).toEqual({
+      msg_type: 2,
+      markdown: { content: '## 标题\n\n正文 **加粗**' },
+    })
+  })
+
+  it('builds a legacy markdown template message', () => {
     const body = buildMessageBody(
       draft({
         kind: 'markdown',
         content: '',
+        markdownMode: 'template',
         markdownTemplateId: ' tpl-1 ',
         markdownParams: [
           { key: 'title', values: 'a，b, c' },
@@ -117,13 +134,12 @@ describe('buildMessageBody', () => {
 })
 
 describe('parseMessageBody', () => {
-  it('round-trips a built markdown body', () => {
+  it('round-trips a native markdown body', () => {
     const built = buildMessageBody(
       draft({
         kind: 'markdown',
-        content: 'fallback',
-        markdownTemplateId: 'tpl-1',
-        markdownParams: [{ key: 'title', values: 'a，b' }],
+        content: '',
+        markdownContent: '# 标题\n\n正文',
         msgId: 'MSG_1',
         msgSeq: '2',
       }),
@@ -132,10 +148,41 @@ describe('parseMessageBody', () => {
     const parsed = parseMessageBody(JSON.stringify(built))
 
     expect(parsed.kind).toBe('markdown')
-    expect(parsed.markdownTemplateId).toBe('tpl-1')
-    expect(parsed.markdownParams).toEqual([{ key: 'title', values: 'a，b' }])
+    expect(parsed.markdownMode).toBe('content')
+    expect(parsed.markdownContent).toBe('# 标题\n\n正文')
     expect(parsed.msgId).toBe('MSG_1')
     expect(parsed.msgSeq).toBe('2')
+  })
+
+  it('round-trips a legacy markdown template body', () => {
+    const built = buildMessageBody(
+      draft({
+        kind: 'markdown',
+        content: '',
+        markdownMode: 'template',
+        markdownTemplateId: 'tpl-1',
+        markdownParams: [{ key: 'title', values: 'a，b' }],
+      }),
+      'group',
+    )
+    const parsed = parseMessageBody(JSON.stringify(built))
+
+    expect(parsed.kind).toBe('markdown')
+    expect(parsed.markdownMode).toBe('template')
+    expect(parsed.markdownTemplateId).toBe('tpl-1')
+    expect(parsed.markdownParams).toEqual([{ key: 'title', values: 'a，b' }])
+  })
+
+  it('prefers native markdown content when both styles are present', () => {
+    const parsed = parseMessageBody(
+      JSON.stringify({
+        msg_type: 2,
+        markdown: { content: '# hi', custom_template_id: 'tpl-1' },
+      }),
+    )
+
+    expect(parsed.markdownMode).toBe('content')
+    expect(parsed.markdownContent).toBe('# hi')
   })
 
   it('detects the kind from the payload even when msg_type is missing', () => {
@@ -160,11 +207,23 @@ describe('parseMessageBody', () => {
 })
 
 describe('validateMessageDraft', () => {
-  it('requires content for text and template ids for markdown / ark', () => {
+  it('requires content for text and a body for markdown / ark', () => {
     expect(validateMessageDraft(draft({ content: '' }), 'group')).toContain('content')
     expect(validateMessageDraft(draft({ kind: 'markdown', content: '' }), 'group')).toContain(
-      'custom_template_id',
+      '内容',
     )
+    expect(
+      validateMessageDraft(
+        draft({ kind: 'markdown', content: '', markdownContent: '## hi' }),
+        'group',
+      ),
+    ).toBeNull()
+    expect(
+      validateMessageDraft(
+        draft({ kind: 'markdown', content: '', markdownMode: 'template' }),
+        'group',
+      ),
+    ).toContain('custom_template_id')
     expect(validateMessageDraft(draft({ kind: 'ark', content: '' }), 'group')).toContain(
       'template_id',
     )

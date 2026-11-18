@@ -12,6 +12,13 @@ export type MessageScope = 'group' | 'c2c' | 'channel' | 'dm'
 
 export type MessageKind = 'text' | 'markdown' | 'ark' | 'embed' | 'media'
 
+/**
+ * `content` sends native Markdown (`markdown.content`), which QQ opened to all
+ * bots in April 2026. `template` keeps the deprecated `custom_template_id`
+ * flow working for messages that still depend on a platform template.
+ */
+export type MarkdownMode = 'content' | 'template'
+
 export interface MarkdownParamRow {
   key: string
   /** Raw input; values are separated by `,` / `，`. */
@@ -31,6 +38,9 @@ export interface EmbedFieldRow {
 export interface MessageDraft {
   kind: MessageKind
   content: string
+  /** Native `markdown.content`; the default way to send Markdown. */
+  markdownContent: string
+  markdownMode: MarkdownMode
   markdownTemplateId: string
   markdownParams: MarkdownParamRow[]
   arkTemplateId: string
@@ -69,7 +79,7 @@ export const MESSAGE_KINDS: MessageKindMeta[] = [
     kind: 'markdown',
     label: 'Markdown',
     msgType: 2,
-    hint: 'Markdown 模板消息，custom_template_id 需要先在 QQ 开放平台申请。',
+    hint: '直接填写 Markdown 内容即可（markdown.content），无需申请模板；旧模板可切换到「模板」方式。',
   },
   {
     kind: 'ark',
@@ -107,6 +117,8 @@ export function emptyDraft(): MessageDraft {
   return {
     kind: 'text',
     content: '你好，QBotWire',
+    markdownContent: '',
+    markdownMode: 'content',
     markdownTemplateId: '',
     markdownParams: [],
     arkTemplateId: '',
@@ -168,8 +180,12 @@ export function buildMessageBody(
   scope: MessageScope,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {}
-  const content = draft.content.trim()
-  if (content) body.content = content
+  // `content` is the plain-text body. The docs require it to stay empty when a
+  // `markdown` object is present, so Markdown drafts never emit it.
+  if (draft.kind !== 'markdown') {
+    const content = draft.content.trim()
+    if (content) body.content = content
+  }
 
   switch (draft.kind) {
     case 'text':
@@ -177,13 +193,18 @@ export function buildMessageBody(
       break
     case 'markdown': {
       body.msg_type = 2
-      const markdown: Record<string, unknown> = {
-        custom_template_id: draft.markdownTemplateId.trim(),
+      const markdown: Record<string, unknown> = {}
+      if (draft.markdownMode === 'template') {
+        const templateIdValue = draft.markdownTemplateId.trim()
+        if (templateIdValue) markdown.custom_template_id = templateIdValue
+        const params = draft.markdownParams
+          .map((row) => ({ key: row.key.trim(), values: splitValues(row.values) }))
+          .filter((row) => row.key)
+        if (params.length) markdown.params = params
+      } else {
+        const markdownContent = draft.markdownContent.trim()
+        if (markdownContent) markdown.content = markdownContent
       }
-      const params = draft.markdownParams
-        .map((row) => ({ key: row.key.trim(), values: splitValues(row.values) }))
-        .filter((row) => row.key)
-      if (params.length) markdown.params = params
       body.markdown = markdown
       break
     }
@@ -287,7 +308,9 @@ export function parseMessageBody(text: string): MessageDraft {
   draft.content = asString(data.content)
 
   if (markdown) {
-    draft.markdownTemplateId = asString(markdown.custom_template_id)
+    draft.markdownContent = asString(markdown.content)
+    draft.markdownTemplateId =
+      asString(markdown.custom_template_id) || asString(markdown.template_id)
     if (Array.isArray(markdown.params)) {
       draft.markdownParams = markdown.params.filter(isRecord).map((row) => ({
         key: asString(row.key),
@@ -296,6 +319,10 @@ export function parseMessageBody(text: string): MessageDraft {
           : asString(row.values),
       }))
     }
+    const hasContent = draft.markdownContent.trim() !== ''
+    const hasTemplate =
+      draft.markdownTemplateId.trim() !== '' || draft.markdownParams.length > 0
+    draft.markdownMode = hasContent || !hasTemplate ? 'content' : 'template'
   }
 
   if (ark) {
@@ -346,8 +373,12 @@ export function validateMessageDraft(
   if (draft.kind === 'text' && !draft.content.trim()) {
     return '文本消息需要填写 content'
   }
-  if (draft.kind === 'markdown' && !draft.markdownTemplateId.trim()) {
-    return 'Markdown 消息需要填写 custom_template_id'
+  if (draft.kind === 'markdown') {
+    if (draft.markdownMode === 'template') {
+      if (!draft.markdownTemplateId.trim()) return '模板方式需要填写 custom_template_id'
+    } else if (!draft.markdownContent.trim()) {
+      return 'Markdown 消息需要填写内容'
+    }
   }
   if (draft.kind === 'ark') {
     const id = draft.arkTemplateId.trim()

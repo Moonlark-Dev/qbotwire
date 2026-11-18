@@ -11,6 +11,7 @@ import {
   type MessageDraft,
   type MessageKind,
   type MessageScope,
+  type MarkdownMode,
 } from '@/lib/messageBuilder'
 import {
   Boxes,
@@ -41,6 +42,11 @@ const KIND_ICONS = {
   embed: LayoutTemplate,
   media: Image,
 }
+
+const markdownModes: { value: MarkdownMode; label: string }[] = [
+  { value: 'content', label: '自定义内容' },
+  { value: 'template', label: '模板（旧）' },
+]
 
 const KEYBOARD_EXAMPLE = {
   content: {
@@ -164,7 +170,7 @@ function apply() {
         </div>
         <p class="kind-hint">{{ activeMeta.hint }}</p>
 
-        <label class="field">
+        <label v-if="draft.kind !== 'markdown'" class="field">
           <span class="field-label">
             {{ draft.kind === 'text' ? '消息内容' : 'content（可选回退文本）' }}
             <span class="counter">{{ draft.content.length }} 字</span>
@@ -178,53 +184,92 @@ function apply() {
         </label>
 
         <template v-if="draft.kind === 'markdown'">
-          <label class="field">
-            <span class="field-label">custom_template_id</span>
-            <input
-              v-model="draft.markdownTemplateId"
-              class="input mono"
-              type="text"
-              placeholder="开放平台申请的 Markdown 模板 ID"
-              spellcheck="false"
-            />
-          </label>
-          <div class="field">
-            <div class="field-head">
-              <span class="field-label">模板参数</span>
-              <button class="add-btn" type="button" @click="addMarkdownParam">
-                <Plus :size="11" /> 添加参数
-              </button>
-            </div>
-            <div
-              v-for="(row, index) in draft.markdownParams"
-              :key="index"
-              class="row-inputs"
+          <div class="mode-tabs">
+            <button
+              v-for="mode in markdownModes"
+              :key="mode.value"
+              type="button"
+              class="mode-tab"
+              :class="{ active: draft.markdownMode === mode.value }"
+              @click="draft.markdownMode = mode.value"
             >
-              <input
-                v-model="row.key"
-                class="input mono row-key"
-                type="text"
-                placeholder="key"
-                spellcheck="false"
-              />
-              <input
-                v-model="row.values"
-                class="input"
-                type="text"
-                placeholder="values，多个值用逗号分隔"
-                spellcheck="false"
-              />
-              <button
-                class="remove-btn"
-                type="button"
-                title="删除该参数"
-                @click="removeMarkdownParam(index)"
-              >
-                <X :size="13" />
-              </button>
-            </div>
-            <p class="field-hint">params 与模板里的占位符一一对应；values 用中文或英文逗号分隔。</p>
+              {{ mode.label }}
+            </button>
           </div>
+
+          <template v-if="draft.markdownMode === 'content'">
+            <label class="field">
+              <span class="field-label">
+                markdown.content
+                <span class="counter">{{ draft.markdownContent.length }} 字</span>
+              </span>
+              <textarea
+                v-model="draft.markdownContent"
+                class="textarea markdown-input"
+                rows="8"
+                placeholder="## 标题&#10;&#10;正文支持 **加粗**、*斜体*、[链接](https://example.com) 和列表。"
+              />
+            </label>
+            <p class="field-hint">
+              单聊 / 群聊自定义 Markdown 已全量开放，无需申请模板。
+              <template v-if="scope === 'channel' || scope === 'dm'">
+                频道场景仍需内邀开通后才能发送自定义 Markdown。
+              </template>
+            </p>
+          </template>
+
+          <template v-else>
+            <p class="field-hint">
+              模板方式已废弃，仅用于兼容旧模板消息；新消息建议切换到「自定义内容」。
+            </p>
+            <label class="field">
+              <span class="field-label">custom_template_id</span>
+              <input
+                v-model="draft.markdownTemplateId"
+                class="input mono"
+                type="text"
+                placeholder="旧版 Markdown 模板 ID"
+                spellcheck="false"
+              />
+            </label>
+            <div class="field">
+              <div class="field-head">
+                <span class="field-label">模板参数</span>
+                <button class="add-btn" type="button" @click="addMarkdownParam">
+                  <Plus :size="11" /> 添加参数
+                </button>
+              </div>
+              <div
+                v-for="(row, index) in draft.markdownParams"
+                :key="index"
+                class="row-inputs"
+              >
+                <input
+                  v-model="row.key"
+                  class="input mono row-key"
+                  type="text"
+                  placeholder="key"
+                  spellcheck="false"
+                />
+                <input
+                  v-model="row.values"
+                  class="input"
+                  type="text"
+                  placeholder="values，多个值用逗号分隔"
+                  spellcheck="false"
+                />
+                <button
+                  class="remove-btn"
+                  type="button"
+                  title="删除该参数"
+                  @click="removeMarkdownParam(index)"
+                >
+                  <X :size="13" />
+                </button>
+              </div>
+              <p class="field-hint">params 与模板里的占位符一一对应；values 用中文或英文逗号分隔。</p>
+            </div>
+          </template>
         </template>
 
         <template v-if="draft.kind === 'ark'">
@@ -536,6 +581,40 @@ function apply() {
   font-size: 10.5px;
   line-height: 1.6;
   color: var(--ink-3);
+}
+
+.mode-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel-3);
+  border-radius: 7px;
+  align-self: flex-start;
+}
+
+.mode-tab {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mode-tab:hover {
+  color: var(--ink-2);
+}
+
+.mode-tab.active {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.markdown-input {
+  min-height: 170px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
 .field {

@@ -42,12 +42,29 @@ describe('MessageBuilderModal', () => {
     })
   })
 
-  it('builds a markdown message from template params', async () => {
+  it('builds a native markdown message without a template', async () => {
     const wrapper = mountModal('group', '{"content": ""}')
 
     await button(wrapper, 'Markdown')!.trigger('click')
+    expect(wrapper.find('.mode-tab.active').text()).toContain('自定义内容')
+
+    await wrapper.find('textarea.markdown-input').setValue('## 标题\n\n正文 **加粗**')
+
+    await button(wrapper, '填入请求体')!.trigger('click')
+
+    expect(wrapper.emitted('apply')?.[0]?.[0]).toEqual({
+      msg_type: 2,
+      markdown: { content: '## 标题\n\n正文 **加粗**' },
+    })
+  })
+
+  it('still builds a legacy markdown template message', async () => {
+    const wrapper = mountModal('group', '{"content": ""}')
+
+    await button(wrapper, 'Markdown')!.trigger('click')
+    await button(wrapper, '模板（旧）')!.trigger('click')
     await wrapper
-      .find('input[placeholder="开放平台申请的 Markdown 模板 ID"]')
+      .find('input[placeholder="旧版 Markdown 模板 ID"]')
       .setValue('tpl-1')
     await button(wrapper, '添加参数')!.trigger('click')
 
@@ -64,6 +81,18 @@ describe('MessageBuilderModal', () => {
         params: [{ key: 'title', values: ['a', 'b'] }],
       },
     })
+  })
+
+  it('prefills native markdown content from an existing body', () => {
+    const wrapper = mountModal(
+      'group',
+      JSON.stringify({ msg_type: 2, markdown: { content: '# 已有内容' } }),
+    )
+
+    expect(wrapper.find('.kind-tab.active').text()).toContain('Markdown')
+    expect(
+      (wrapper.find('textarea.markdown-input').element as HTMLTextAreaElement).value,
+    ).toBe('# 已有内容')
   })
 
   it('prefills an existing embed body and hides rich media on channel messages', async () => {
