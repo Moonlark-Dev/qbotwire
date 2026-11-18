@@ -41,7 +41,7 @@ export const app = reactive<AppState>({
   ready: false,
   fatal: null,
   mode: backend.mode,
-  version: '1.0.1',
+  version: '1.1.0',
   credentials: null,
   settings: { ...DEFAULT_SETTINGS },
   savedEndpoints: [],
