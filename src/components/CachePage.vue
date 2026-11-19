@@ -5,11 +5,13 @@ import {
   clearCache,
   refreshCache,
   refreshGroup,
+  refreshUser,
   renameCacheEntry,
   toast,
 } from '@/stores/app'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { resolveUserAvatar } from '@/lib/avatar'
+import type { GroupEntry, UserEntry } from '@/types'
 import Avatar from './Avatar.vue'
 import Modal from './Modal.vue'
 import {
@@ -65,6 +67,15 @@ const selectedEntry = computed(() => {
     : app.cache.users.find((item) => item.openid === detail.value?.openid) ?? null
 })
 
+/** Typed views of the selection so optional fields can be rendered safely. */
+const detailGroup = computed<GroupEntry | null>(() =>
+  detail.value?.kind === 'group' ? ((selectedEntry.value as GroupEntry | null) ?? null) : null,
+)
+
+const detailUser = computed<UserEntry | null>(() =>
+  detail.value?.kind === 'user' ? ((selectedEntry.value as UserEntry | null) ?? null) : null,
+)
+
 watch(selectedEntry, (entry) => {
   draftName.value = entry?.name ?? ''
 })
@@ -106,6 +117,20 @@ async function onRefreshGroup() {
     const updated = await refreshGroup(detail.value.openid)
     if (updated) toast('success', '群信息已从 API 刷新')
     else toast('error', '缓存中找不到这个群')
+  } catch (reason) {
+    toast('error', reason instanceof Error ? reason.message : String(reason))
+  } finally {
+    refreshing.value = false
+  }
+}
+
+async function onRefreshUser() {
+  if (!detail.value || detail.value.kind !== 'user') return
+  refreshing.value = true
+  try {
+    const updated = await refreshUser(detail.value.openid)
+    if (updated) toast('success', '用户资料已从 API 刷新')
+    else toast('error', '缓存中找不到这个用户')
   } catch (reason) {
     toast('error', reason instanceof Error ? reason.message : String(reason))
   } finally {
@@ -276,13 +301,27 @@ async function confirmClearNow() {
               <Copy :size="11" />
             </button>
           </dd>
-          <template v-if="detail.kind === 'user' && 'unionOpenid' in selectedEntry">
+          <template v-if="detailUser">
             <dt>Union OpenID</dt>
-            <dd class="mono">{{ selectedEntry.unionOpenid || '—' }}</dd>
+            <dd class="mono">{{ detailUser.unionOpenid || '—' }}</dd>
           </template>
-          <template v-if="detail.kind === 'group' && 'memberCount' in selectedEntry">
+          <template v-if="detailGroup">
+            <dt>Union 群 OpenID</dt>
+            <dd class="mono">{{ detailGroup.unionGroupOpenid || '—' }}</dd>
             <dt>成员数</dt>
-            <dd>{{ selectedEntry.memberCount ?? '—' }}</dd>
+            <dd>{{ detailGroup.memberCount ?? '—' }}</dd>
+          </template>
+          <template v-if="detailUser">
+            <dt>主动消息</dt>
+            <dd>
+              {{
+                detailUser.allowProactiveMsg === true
+                  ? '接受主动推送'
+                  : detailUser.allowProactiveMsg === false
+                    ? '不接受主动推送'
+                    : '尚未查询'
+              }}
+            </dd>
           </template>
           <dt>消息计数</dt>
           <dd>{{ selectedEntry.messageCount }}</dd>
@@ -292,9 +331,13 @@ async function confirmClearNow() {
           <dd>{{ formatDateTime(selectedEntry.lastSeen) }} · {{ formatRelative(selectedEntry.lastSeen) }}</dd>
           <dt>来源事件</dt>
           <dd class="mono">{{ selectedEntry.source || '—' }}</dd>
-          <template v-if="detail.kind === 'group' && 'infoFetchedAt' in selectedEntry">
+          <template v-if="detailGroup">
             <dt>群信息刷新</dt>
-            <dd>{{ selectedEntry.infoFetchedAt ? formatDateTime(selectedEntry.infoFetchedAt) : '尚未刷新' }}</dd>
+            <dd>{{ detailGroup.infoFetchedAt ? formatDateTime(detailGroup.infoFetchedAt) : '尚未刷新' }}</dd>
+          </template>
+          <template v-if="detailUser">
+            <dt>资料刷新</dt>
+            <dd>{{ detailUser.infoFetchedAt ? formatDateTime(detailUser.infoFetchedAt) : '尚未刷新' }}</dd>
           </template>
         </dl>
       </div>
@@ -308,6 +351,16 @@ async function confirmClearNow() {
         >
           <RefreshCw :size="12" :class="{ spin: refreshing }" />
           从 API 刷新群信息
+        </button>
+        <button
+          v-else
+          class="btn"
+          type="button"
+          :disabled="refreshing"
+          @click="onRefreshUser"
+        >
+          <RefreshCw :size="12" :class="{ spin: refreshing }" />
+          从 API 刷新用户资料
         </button>
         <button class="btn primary" type="button" @click="detail = null">完成</button>
       </template>

@@ -66,4 +66,49 @@ describe('API catalogue', () => {
       expect(messageScopeForPath(endpoint.method, endpoint.path)).toBe(endpoint.message)
     }
   })
+
+  // 2026-09-03 changelog: group member management APIs.
+  // https://bot.q.qq.com/wiki/develop/api-v2/changelog.html#_20260903
+  it('matches the documented group member management endpoints', () => {
+    const list = getEndpoint('group.members.list')
+    expect(list?.method).toBe('GET')
+    expect(list?.path).toBe('/v2/groups/{group_openid}/members')
+    expect(list?.query.map((row) => row.name)).toEqual(['cursor'])
+    expect(list?.body).toBe('')
+    expect(list?.auth).toBe(true)
+
+    const detail = getEndpoint('group.members.get')
+    expect(detail?.method).toBe('GET')
+    expect(detail?.path).toBe('/v2/groups/{group_openid}/members/{member_openid}')
+    expect(detail?.query).toEqual([])
+
+    const remove = getEndpoint('group.batch_remove')
+    expect(remove?.method).toBe('POST')
+    expect(remove?.path).toBe('/v2/groups/{group_openid}/batch_remove_members')
+    expect(remove?.query).toEqual([])
+    expect(JSON.parse(remove!.body)).toEqual({ member_openids: [] })
+
+    const blacklistList = getEndpoint('group.blacklist.list')
+    expect(blacklistList?.method).toBe('GET')
+    expect(blacklistList?.path).toBe('/v2/groups/{group_openid}/member_blacklist')
+    expect(blacklistList?.query.map((row) => row.name)).toEqual(['cursor', 'limit'])
+    expect(blacklistList?.body).toBe('')
+
+    const blacklistOp = getEndpoint('group.blacklist.set')
+    expect(blacklistOp?.method).toBe('POST')
+    expect(blacklistOp?.path).toBe('/v2/groups/{group_openid}/member_blacklist')
+    expect(blacklistOp?.query).toEqual([])
+    expect(JSON.parse(blacklistOp!.body)).toEqual({ op: 'add', member_openids: [] })
+  })
+
+  // 2026-11-16 changelog: GET /v2/users/{user_openid}/info.
+  it('lists the 2026-11-16 user profile endpoint', () => {
+    const endpoint = getEndpoint('user.info')
+    expect(endpoint?.method).toBe('GET')
+    expect(endpoint?.path).toBe('/v2/users/{user_openid}/info')
+    expect(endpoint?.query).toEqual([])
+    expect(endpoint?.body).toBe('')
+    expect(endpoint?.auth).toBe(true)
+    expect(endpoint?.pathParams.map((param) => param.name)).toEqual(['user_openid'])
+  })
 })

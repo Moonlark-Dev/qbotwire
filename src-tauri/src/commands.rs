@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::models::{
     ApiRequest, ApiResponse, Bootstrap, CacheSnapshot, ConnectionStatus, Credentials, GroupEntry,
-    LogoutOptions, SavedEndpoint, Settings, StoredConfig,
+    LogoutOptions, SavedEndpoint, Settings, StoredConfig, UserEntry,
 };
 use crate::Core;
 
@@ -120,6 +120,17 @@ pub async fn refresh_group(
 ) -> Result<Option<GroupEntry>, String> {
     let core = core.inner().clone();
     core.refresh_group(&group_openid)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn refresh_user(
+    core: State<'_, Core>,
+    openid: String,
+) -> Result<Option<UserEntry>, String> {
+    let core = core.inner().clone();
+    core.refresh_user(&openid)
         .await
         .map_err(|error| error.to_string())
 }

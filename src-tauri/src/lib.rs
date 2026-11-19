@@ -20,7 +20,7 @@ use crate::error::{AppError, AppResult};
 use crate::gateway::GatewayController;
 use crate::models::{
     Bootstrap, CacheSnapshot, ConnectionStatus, Credentials, GatewayEvent, GroupEntry, Settings,
-    StoredConfig,
+    StoredConfig, UserEntry,
 };
 use crate::store::Store;
 
@@ -219,10 +219,12 @@ impl Core {
             .await;
             match result {
                 Ok(info) => {
-                    match core
-                        .cache
-                        .update_group_info(&openid, info.name, info.member_count)
-                    {
+                    match core.cache.update_group_info(
+                        &openid,
+                        info.name,
+                        info.member_count,
+                        info.union_group_openid,
+                    ) {
                         Ok(Some(_)) => core.emit_cache(core.cache.snapshot()),
                         Ok(None) => {}
                         Err(error) => eprintln!("[qbotwire] group info cache failed: {error}"),
@@ -245,9 +247,33 @@ impl Core {
             .access_token(&self.http, &credentials, false)
             .await?;
         let info = api::fetch_group_info(self, &credentials, &token, openid).await?;
-        let updated = self
-            .cache
-            .update_group_info(openid, info.name, info.member_count)?;
+        let updated = self.cache.update_group_info(
+            openid,
+            info.name,
+            info.member_count,
+            info.union_group_openid,
+        )?;
+        self.emit_cache(self.cache.snapshot());
+        Ok(updated)
+    }
+
+    pub async fn refresh_user(&self, openid: &str) -> AppResult<Option<UserEntry>> {
+        let credentials = self
+            .store
+            .credentials()
+            .ok_or_else(|| AppError::Config("还没有配置 Bot 凭据，请先在设置里填写".into()))?;
+        let token = self
+            .auth
+            .access_token(&self.http, &credentials, false)
+            .await?;
+        let info = api::fetch_user_info(self, &credentials, &token, openid).await?;
+        let updated = self.cache.update_user_info(
+            openid,
+            info.name,
+            info.avatar,
+            info.union_openid,
+            info.allow_proactive_msg,
+        )?;
         self.emit_cache(self.cache.snapshot());
         Ok(updated)
     }
@@ -288,6 +314,7 @@ pub fn run() {
             commands::clear_cache,
             commands::rename_cache_entry,
             commands::refresh_group,
+            commands::refresh_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running qbotwire");

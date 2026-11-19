@@ -271,6 +271,8 @@ pub async fn fetch_bot_info(
 pub struct GroupInfo {
     pub name: Option<String>,
     pub member_count: Option<i64>,
+    /// Cross-app group OpenID added by the 2026-11-16 API change.
+    pub union_group_openid: Option<String>,
 }
 
 pub async fn fetch_group_info(
@@ -281,7 +283,11 @@ pub async fn fetch_group_info(
 ) -> AppResult<GroupInfo> {
     let url = format!("{}/v2/groups/{}/info", credentials.base_url(), group_openid);
     let value = get_json(core, &url, token).await?;
-    Ok(GroupInfo {
+    Ok(parse_group_info(&value))
+}
+
+fn parse_group_info(value: &Value) -> GroupInfo {
+    GroupInfo {
         name: value
             .get("group_name")
             .and_then(Value::as_str)
@@ -292,7 +298,46 @@ pub async fn fetch_group_info(
                 .as_i64()
                 .or_else(|| value.as_str().and_then(|text| text.parse::<i64>().ok()))
         }),
-    })
+        union_group_openid: non_empty_string(value, "union_group_openid"),
+    }
+}
+
+/// Profile returned by `GET /v2/users/{openid}/info` (2026-11-16 API change).
+#[derive(Debug, Clone, Default)]
+pub struct UserInfo {
+    pub name: Option<String>,
+    pub avatar: Option<String>,
+    pub union_openid: Option<String>,
+    pub allow_proactive_msg: Option<bool>,
+}
+
+pub async fn fetch_user_info(
+    core: &Core,
+    credentials: &Credentials,
+    token: &str,
+    user_openid: &str,
+) -> AppResult<UserInfo> {
+    let url = format!("{}/v2/users/{}/info", credentials.base_url(), user_openid);
+    let value = get_json(core, &url, token).await?;
+    Ok(parse_user_info(&value))
+}
+
+fn parse_user_info(value: &Value) -> UserInfo {
+    UserInfo {
+        name: non_empty_string(value, "username"),
+        avatar: non_empty_string(value, "avatar"),
+        union_openid: non_empty_string(value, "union_openid"),
+        allow_proactive_msg: value.get("allow_proactive_msg").and_then(Value::as_bool),
+    }
+}
+
+fn non_empty_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
 }
 
 #[cfg(test)]
@@ -358,6 +403,37 @@ mod tests {
             "hi"
         );
         assert!(parse_body("{oops").is_err());
+    }
+
+    #[test]
+    fn parses_group_info_with_the_union_group_openid() {
+        let info = parse_group_info(&serde_json::json!({
+            "group_openid": "g-1",
+            "group_name": "读书分享会",
+            "group_member_num": 256,
+            "union_group_openid": "union-g-1"
+        }));
+        assert_eq!(info.name.as_deref(), Some("读书分享会"));
+        assert_eq!(info.member_count, Some(256));
+        assert_eq!(info.union_group_openid.as_deref(), Some("union-g-1"));
+        assert!(parse_group_info(&serde_json::json!({}))
+            .union_group_openid
+            .is_none());
+    }
+
+    #[test]
+    fn parses_user_info_from_the_2026_11_16_api() {
+        let info = parse_user_info(&serde_json::json!({
+            "username": "笑😊心❤️",
+            "avatar": "https://thirdqq.qlogo.cn/x",
+            "allow_proactive_msg": false,
+            "union_openid": ""
+        }));
+        assert_eq!(info.name.as_deref(), Some("笑😊心❤️"));
+        assert_eq!(info.avatar.as_deref(), Some("https://thirdqq.qlogo.cn/x"));
+        assert_eq!(info.allow_proactive_msg, Some(false));
+        assert_eq!(info.union_openid, None);
+        assert_eq!(parse_user_info(&serde_json::json!({})).name, None);
     }
 
     #[test]

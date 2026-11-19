@@ -58,6 +58,8 @@ export interface GroupEntry {
   name?: string | null
   avatar?: string | null
   memberCount?: number | null
+  /** Cross-app group OpenID (2026-11-16 API change), set when a third-party app is bound. */
+  unionGroupOpenid?: string | null
   source?: string | null
   firstSeen: string
   lastSeen: string
@@ -70,10 +72,14 @@ export interface UserEntry {
   name?: string | null
   avatar?: string | null
   unionOpenid?: string | null
+  /** `GET /v2/users/{openid}/info`: whether the user accepts proactive messages. */
+  allowProactiveMsg?: boolean | null
   source?: string | null
   firstSeen: string
   lastSeen: string
   messageCount: number
+  /** Last time the profile was fetched from `GET /v2/users/{openid}/info`. */
+  infoFetchedAt?: string | null
 }
 
 export interface CacheSnapshot {
@@ -157,6 +163,7 @@ export interface Backend {
   clearCache(kind?: 'groups' | 'users'): Promise<CacheSnapshot>
   renameCacheEntry(kind: 'group' | 'user', openid: string, name: string): Promise<CacheSnapshot>
   refreshGroup(groupOpenid: string): Promise<GroupEntry | null>
+  refreshUser(openid: string): Promise<UserEntry | null>
   onEvent(handler: (event: GatewayEvent) => void): () => void
   onStatus(handler: (status: ConnectionStatus) => void): () => void
   onCache(handler: (snapshot: CacheSnapshot) => void): () => void

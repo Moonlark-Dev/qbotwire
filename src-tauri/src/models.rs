@@ -299,6 +299,10 @@ pub struct GroupEntry {
     pub avatar: Option<String>,
     #[serde(default)]
     pub member_count: Option<i64>,
+    /// Cross-app group OpenID (2026-11-16 API change); only present when a
+    /// third-party app is bound to the bot.
+    #[serde(default)]
+    pub union_group_openid: Option<String>,
     #[serde(default)]
     pub source: Option<String>,
     pub first_seen: String,
@@ -319,12 +323,17 @@ pub struct UserEntry {
     pub avatar: Option<String>,
     #[serde(default)]
     pub union_openid: Option<String>,
+    /// `GET /v2/users/{openid}/info`: whether the user accepts proactive messages.
+    #[serde(default)]
+    pub allow_proactive_msg: Option<bool>,
     #[serde(default)]
     pub source: Option<String>,
     pub first_seen: String,
     pub last_seen: String,
     #[serde(default)]
     pub message_count: u64,
+    #[serde(default)]
+    pub info_fetched_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

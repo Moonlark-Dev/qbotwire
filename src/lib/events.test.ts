@@ -220,4 +220,75 @@ describe('formatEvent', () => {
     })
     expect(view.group).toBeNull()
   })
+
+  // 2026-11-16 changelog: group events gained member_nickname / avatar and
+  // union_group_openid; C2C events gained the sender nickname and avatar.
+  it('shows the group nickname, avatar and union group openid from the payload', () => {
+    const view = formatEvent(
+      event('GROUP_AT_MESSAGE_CREATE', {
+        id: 'msg-30',
+        content: 'hi',
+        group_openid: 'group-1',
+        union_group_openid: 'union-group-9',
+        author: {
+          id: 'member-30',
+          member_openid: 'member-30',
+          member_nickname: '群里的昵称',
+          member_role: 'owner',
+          username: '小灯',
+          avatar: 'https://example.com/m30.png',
+        },
+      }),
+    )
+
+    expect(view.author?.name).toBe('群里的昵称')
+    expect(view.author?.avatar).toBe('https://example.com/m30.png')
+    expect(view.fields.find((field) => field.label === '群昵称')?.value).toBe('群里的昵称')
+    expect(view.fields.find((field) => field.label === '昵称')?.value).toBe('小灯')
+    expect(view.fields.find((field) => field.label === 'Union 群 OpenID')?.value).toBe(
+      'union-group-9',
+    )
+    expect(view.fields.find((field) => field.label === '群内角色')?.value).toBe('owner')
+    expect(view.group?.unionOpenid).toBe('union-group-9')
+  })
+
+  it('formats group member events with the union group openid', () => {
+    const view = formatEvent(
+      event('GROUP_MEMBER_ADD', {
+        timestamp: 1784276757,
+        group_openid: 'group-1',
+        member_openid: 'member-1',
+        union_group_openid: 'union-group-1',
+      }),
+      lookup,
+    )
+
+    expect(view.title).toBe('群成员加入')
+    expect(view.category).toBe('member')
+    expect(view.fields.find((field) => field.label === '成员 OpenID')?.value).toBe('member-1')
+    expect(view.fields.find((field) => field.label === 'Union 群 OpenID')?.value).toBe(
+      'union-group-1',
+    )
+    expect(view.fields.find((field) => field.label === '时间')?.value).toBe(
+      new Date(1784276757 * 1000).toISOString(),
+    )
+  })
+
+  it('shows the c2c sender nickname from the payload', () => {
+    const view = formatEvent(
+      event('C2C_MESSAGE_CREATE', {
+        id: 'msg-31',
+        content: 'hi',
+        author: {
+          id: 'u-31',
+          user_openid: 'u-31',
+          username: '新朋友',
+          avatar: 'https://example.com/u31.png',
+        },
+      }),
+    )
+
+    expect(view.author?.name).toBe('新朋友')
+    expect(view.fields.find((field) => field.label === '昵称')?.value).toBe('新朋友')
+  })
 })

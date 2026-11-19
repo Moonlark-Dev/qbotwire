@@ -44,4 +44,17 @@ describe('CachePage avatars', () => {
       `https://q.qlogo.cn/qqapp/${credentials.appId}/${user.openid}/100`,
     )
   })
+
+  it('offers the 2026-11-16 user profile refresh in the detail drawer', async () => {
+    const wrapper = mount(CachePage, { attachTo: document.body })
+    const userTab = wrapper.findAll('button.tab').find((tab) => tab.text().includes('用户'))
+    await userTab!.trigger('click')
+    await wrapper.find('.card').trigger('click')
+    // The modal is teleported to <body>, so read it from the document.
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('从 API 刷新用户资料')
+    expect(text).toContain('主动消息')
+    expect(text).toContain('尚未查询')
+    wrapper.unmount()
+  })
 })

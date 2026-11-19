@@ -41,7 +41,7 @@ export const app = reactive<AppState>({
   ready: false,
   fatal: null,
   mode: backend.mode,
-  version: '1.1.0',
+  version: '1.2.0',
   credentials: null,
   settings: { ...DEFAULT_SETTINGS },
   savedEndpoints: [],
@@ -188,6 +188,12 @@ export async function renameCacheEntry(kind: 'group' | 'user', openid: string, n
 
 export async function refreshGroup(openid: string) {
   const updated = await backend.refreshGroup(openid)
+  if (updated) await refreshCache()
+  return updated
+}
+
+export async function refreshUser(openid: string) {
+  const updated = await backend.refreshUser(openid)
   if (updated) await refreshCache()
   return updated
 }

@@ -85,6 +85,7 @@ impl CacheStore {
                         name,
                         avatar,
                         None,
+                        get_str(data, "union_group_openid"),
                         event_type,
                         &now,
                         message_event,
@@ -98,7 +99,9 @@ impl CacheStore {
                     changed |= upsert_user(
                         &mut store,
                         &openid,
-                        author.and_then(|value| get_str(value, "username")),
+                        author
+                            .and_then(|value| get_str(value, "username"))
+                            .or_else(|| author.and_then(|value| get_str(value, "member_nickname"))),
                         author.and_then(|value| get_str(value, "avatar")),
                         author.and_then(|value| get_str(value, "union_openid")),
                         event_type,
@@ -163,6 +166,38 @@ impl CacheStore {
                         get_str(data, "group_name"),
                         get_str(data, "group_avatar"),
                         None,
+                        get_str(data, "union_group_openid"),
+                        event_type,
+                        &now,
+                        false,
+                    );
+                }
+            }
+            "GROUP_MEMBER_ADD" | "GROUP_MEMBER_REMOVE" => {
+                // 2026-11-16: these events also carry `union_group_openid`, so a
+                // bot that only listens to member traffic still learns the group.
+                if let Some(group_openid) = get_str(data, "group_openid") {
+                    changed |= upsert_group(
+                        &mut store,
+                        &group_openid,
+                        None,
+                        None,
+                        None,
+                        get_str(data, "union_group_openid"),
+                        event_type,
+                        &now,
+                        false,
+                    );
+                }
+                let member =
+                    get_str(data, "member_openid").or_else(|| get_str(data, "user_openid"));
+                if let Some(member) = member {
+                    changed |= upsert_user(
+                        &mut store,
+                        &member,
+                        None,
+                        None,
+                        get_str(data, "union_openid"),
                         event_type,
                         &now,
                         false,
@@ -183,6 +218,7 @@ impl CacheStore {
         openid: &str,
         name: Option<String>,
         member_count: Option<i64>,
+        union_group_openid: Option<String>,
     ) -> AppResult<Option<GroupEntry>> {
         let mut store = self.lock();
         let Some(group) = store.groups.get_mut(openid) else {
@@ -194,8 +230,44 @@ impl CacheStore {
         if let Some(count) = member_count {
             group.member_count = Some(count);
         }
+        if let Some(union_group_openid) =
+            union_group_openid.filter(|value| !value.trim().is_empty())
+        {
+            group.union_group_openid = Some(union_group_openid);
+        }
         group.info_fetched_at = Some(now_iso());
         let updated = group.clone();
+        write_json(&self.path, &*store)?;
+        Ok(Some(updated))
+    }
+
+    /// Store the result of `GET /v2/users/{openid}/info` (2026-11-16 API).
+    pub fn update_user_info(
+        &self,
+        openid: &str,
+        name: Option<String>,
+        avatar: Option<String>,
+        union_openid: Option<String>,
+        allow_proactive_msg: Option<bool>,
+    ) -> AppResult<Option<UserEntry>> {
+        let mut store = self.lock();
+        let Some(user) = store.users.get_mut(openid) else {
+            return Ok(None);
+        };
+        if let Some(name) = name.filter(|value| !value.trim().is_empty()) {
+            user.name = Some(name);
+        }
+        if let Some(avatar) = avatar.filter(|value| !value.trim().is_empty()) {
+            user.avatar = Some(avatar);
+        }
+        if let Some(union_openid) = union_openid.filter(|value| !value.trim().is_empty()) {
+            user.union_openid = Some(union_openid);
+        }
+        if let Some(allow) = allow_proactive_msg {
+            user.allow_proactive_msg = Some(allow);
+        }
+        user.info_fetched_at = Some(now_iso());
+        let updated = user.clone();
         write_json(&self.path, &*store)?;
         Ok(Some(updated))
     }
@@ -265,6 +337,7 @@ fn upsert_group(
     name: Option<String>,
     avatar: Option<String>,
     member_count: Option<i64>,
+    union_group_openid: Option<String>,
     source: &str,
     now: &str,
     increment_message: bool,
@@ -277,6 +350,7 @@ fn upsert_group(
             name: None,
             avatar: None,
             member_count: None,
+            union_group_openid: None,
             source: Some(source.to_string()),
             first_seen: now.to_string(),
             last_seen: now.to_string(),
@@ -296,6 +370,9 @@ fn upsert_group(
     }
     if let Some(count) = member_count {
         entry.member_count = Some(count);
+    }
+    if let Some(union_group_openid) = union_group_openid.filter(|value| !value.trim().is_empty()) {
+        entry.union_group_openid = Some(union_group_openid);
     }
     if entry.source.as_deref() != Some(source) {
         entry.source = Some(source.to_string());
@@ -332,10 +409,12 @@ fn upsert_user(
             name: None,
             avatar: None,
             union_openid: None,
+            allow_proactive_msg: None,
             source: Some(source.to_string()),
             first_seen: now.to_string(),
             last_seen: now.to_string(),
             message_count: 0,
+            info_fetched_at: None,
         });
     if let Some(name) = name.filter(|value| !value.trim().is_empty()) {
         if entry.name.as_deref() != Some(name.as_str()) {
@@ -492,14 +571,90 @@ mod tests {
             .ingest_event("GROUP_ADD_ROBOT", &json!({ "group_openid": "g-2" }))
             .unwrap();
         let updated = cache
-            .update_group_info("g-2", Some("新名字".into()), Some(42))
+            .update_group_info(
+                "g-2",
+                Some("新名字".into()),
+                Some(42),
+                Some("union-g-2".into()),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(updated.name.as_deref(), Some("新名字"));
         assert_eq!(updated.member_count, Some(42));
+        assert_eq!(updated.union_group_openid.as_deref(), Some("union-g-2"));
         assert!(!cache.needs_group_info("g-2"));
         let snapshot = cache.rename("group", "g-2", "手工名称").unwrap();
         assert_eq!(snapshot.groups[0].name.as_deref(), Some("手工名称"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ingests_the_2026_11_16_event_fields() {
+        let dir = temp_dir("v20261116");
+        let cache = CacheStore::open(&dir).unwrap();
+        cache
+            .ingest_event(
+                "GROUP_MESSAGE_CREATE",
+                &json!({
+                    "id": "m-1",
+                    "group_openid": "g-4",
+                    "union_group_openid": "union-g-4",
+                    "author": {
+                        "member_openid": "u-4",
+                        "member_nickname": "群里的小名",
+                        "member_role": "admin",
+                        "avatar": "https://example.com/u4.png"
+                    }
+                }),
+            )
+            .unwrap();
+        let snapshot = cache.snapshot();
+        assert_eq!(
+            snapshot.groups[0].union_group_openid.as_deref(),
+            Some("union-g-4")
+        );
+        // username wins when present; member_nickname is only the fallback.
+        assert_eq!(snapshot.users[0].name.as_deref(), Some("群里的小名"));
+        assert_eq!(
+            snapshot.users[0].avatar.as_deref(),
+            Some("https://example.com/u4.png")
+        );
+
+        cache
+            .ingest_event(
+                "GROUP_MEMBER_ADD",
+                &json!({
+                    "timestamp": 1784276757,
+                    "group_openid": "g-5",
+                    "member_openid": "u-5",
+                    "union_group_openid": "union-g-5"
+                }),
+            )
+            .unwrap();
+        let snapshot = cache.snapshot();
+        let group = snapshot
+            .groups
+            .iter()
+            .find(|group| group.openid == "g-5")
+            .expect("group from a member event");
+        assert_eq!(group.union_group_openid.as_deref(), Some("union-g-5"));
+        assert_eq!(group.message_count, 0);
+
+        let user = cache
+            .update_user_info(
+                "u-4",
+                Some("小名".into()),
+                Some("https://example.com/new.png".into()),
+                Some("union-u-4".into()),
+                Some(true),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(user.name.as_deref(), Some("小名"));
+        assert_eq!(user.avatar.as_deref(), Some("https://example.com/new.png"));
+        assert_eq!(user.union_openid.as_deref(), Some("union-u-4"));
+        assert_eq!(user.allow_proactive_msg, Some(true));
+        assert!(user.info_fetched_at.is_some());
         let _ = fs::remove_dir_all(&dir);
     }
 

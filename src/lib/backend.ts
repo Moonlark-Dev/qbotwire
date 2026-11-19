@@ -13,6 +13,7 @@ import type {
   SavedEndpoint,
   Settings,
   StoredConfig,
+  UserEntry,
 } from '@/types'
 import { createMockBackend } from './mockBackend'
 
@@ -56,6 +57,7 @@ const tauriBackend: Backend = {
     invoke<CacheSnapshot>('rename_cache_entry', { kind, openid, name }),
   refreshGroup: (groupOpenid: string) =>
     invoke<GroupEntry | null>('refresh_group', { groupOpenid }),
+  refreshUser: (openid: string) => invoke<UserEntry | null>('refresh_user', { openid }),
   onEvent: (handler) => subscribe<GatewayEvent>('qbotwire:event', handler),
   onStatus: (handler) => subscribe<ConnectionStatus>('qbotwire:status', handler),
   onCache: (handler) => subscribe<CacheSnapshot>('qbotwire:cache', handler),

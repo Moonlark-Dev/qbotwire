@@ -79,6 +79,7 @@ function defaultGroups(): GroupEntry[] {
       name: 'Moonlark 开发者群',
       avatar: demoAvatar('g_demo_1001', 'M'),
       memberCount: 128,
+      unionGroupOpenid: 'union_group_demo_1001',
       source: 'GROUP_AT_MESSAGE_CREATE',
       firstSeen: at,
       lastSeen: at,
@@ -90,6 +91,7 @@ function defaultGroups(): GroupEntry[] {
       name: 'QBotWire 测试群',
       avatar: demoAvatar('g_demo_1002', 'Q'),
       memberCount: 12,
+      unionGroupOpenid: null,
       source: 'GROUP_AT_MESSAGE_CREATE',
       firstSeen: at,
       lastSeen: at,
@@ -107,20 +109,24 @@ function defaultUsers(): UserEntry[] {
       name: '小灯',
       avatar: demoAvatar('u_demo_9527', '灯'),
       unionOpenid: 'union_demo_9527',
+      allowProactiveMsg: true,
       source: 'GROUP_AT_MESSAGE_CREATE',
       firstSeen: at,
       lastSeen: at,
       messageCount: 2,
+      infoFetchedAt: at,
     },
     {
       openid: 'u_demo_3141',
       name: 'SunaōkamiNya',
       avatar: demoAvatar('u_demo_3141', 'S'),
       unionOpenid: null,
+      allowProactiveMsg: false,
       source: 'C2C_MESSAGE_CREATE',
       firstSeen: at,
       lastSeen: at,
       messageCount: 1,
+      infoFetchedAt: null,
     },
   ]
 }
@@ -198,6 +204,7 @@ export function createMockBackend(): Backend {
       name,
       avatar: demoAvatar(openid, name),
       memberCount: null,
+      unionGroupOpenid: null,
       source: 'GROUP_AT_MESSAGE_CREATE',
       firstSeen: nowIso(),
       lastSeen: nowIso(),
@@ -213,10 +220,12 @@ export function createMockBackend(): Backend {
       name,
       avatar: demoAvatar(openid, name),
       unionOpenid: null,
+      allowProactiveMsg: null,
       source: 'GROUP_AT_MESSAGE_CREATE',
       firstSeen: nowIso(),
       lastSeen: nowIso(),
       messageCount: 0,
+      infoFetchedAt: null,
     })
   }
 
@@ -243,9 +252,14 @@ export function createMockBackend(): Backend {
         id: `mock_msg_${Date.now()}`,
         content: `<@!1234567890> ${content}`,
         group_openid: group,
+        union_group_openid: group === 'g_demo_1001' ? 'union_group_demo_1001' : null,
         author: {
           id: user,
           member_openid: user,
+          member_nickname: user === 'u_demo_9527' ? '小灯（群昵称）' : 'SunaōkamiNya',
+          member_role: 'member',
+          username: user === 'u_demo_9527' ? '小灯' : 'SunaōkamiNya',
+          avatar: demoAvatar(user, user === 'u_demo_9527' ? '灯' : 'S'),
           union_openid: user === 'u_demo_9527' ? 'union_demo_9527' : null,
         },
         timestamp: at,
@@ -263,7 +277,13 @@ export function createMockBackend(): Backend {
       pushEvent('C2C_MESSAGE_CREATE', {
         id: `mock_msg_${Date.now()}`,
         content,
-        author: { id: user, user_openid: user, union_openid: null },
+        author: {
+          id: user,
+          user_openid: user,
+          username: user === 'u_demo_9527' ? '小灯' : 'SunaōkamiNya',
+          avatar: demoAvatar(user, user === 'u_demo_9527' ? '灯' : 'S'),
+          union_openid: null,
+        },
         timestamp: at,
         attachments: [],
       })
@@ -406,7 +426,7 @@ export function createMockBackend(): Backend {
         status,
         events: [...eventBuffer],
         cache: snapshot(),
-        version: '1.1.0-preview',
+        version: '1.2.0-preview',
       }
     },
     login,
@@ -475,9 +495,20 @@ export function createMockBackend(): Backend {
       if (!group) return null
       group.infoFetchedAt = nowIso()
       group.lastSeen = nowIso()
+      group.unionGroupOpenid = group.unionGroupOpenid ?? `union_${groupOpenid}`
       persist()
       emitCache()
       return group
+    },
+    async refreshUser(openid: string) {
+      const user = cache.users.find((item) => item.openid === openid)
+      if (!user) return null
+      user.infoFetchedAt = nowIso()
+      user.allowProactiveMsg = user.allowProactiveMsg ?? true
+      user.unionOpenid = user.unionOpenid ?? `union_${openid}`
+      persist()
+      emitCache()
+      return user
     },
     onEvent(handler) {
       eventHandlers.add(handler)

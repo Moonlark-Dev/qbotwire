@@ -78,6 +78,20 @@ export const CATALOG: CatalogEndpoint[] = [
     auth: true,
   },
   {
+    id: 'user.info',
+    name: "获取用户基本信息（昵称 / 头像 / 主动消息）",
+    category: "基础",
+    method: 'GET',
+    path: "/v2/users/{user_openid}/info",
+    description: "需要与用户有好友关系（40184001）；union_openid 当绑定第三方应用时有效",
+    pathParams: [
+      { name: 'user_openid', label: "用户 OpenID", kind: 'user' },
+    ],
+    query: [],
+    body: "",
+    auth: true,
+  },
+  {
     id: 'app.access_token',
     name: "获取 App Access Token（7200s）",
     category: "基础",
@@ -197,11 +211,11 @@ export const CATALOG: CatalogEndpoint[] = [
   },
   {
     id: 'group.blacklist.list',
-    name: "查询群黑名单",
+    name: "群黑名单查询（cursor 分页）",
     category: "群聊管理",
     method: 'GET',
     path: "/v2/groups/{group_openid}/member_blacklist",
-    description: "op：add / del，单次最多 20 人",
+    description: "内邀 / 白名单能力；limit 默认 20、最大 100，next_cursor 为空表示到底",
     pathParams: [
       { name: 'group_openid', label: "群 OpenID", kind: 'group' },
     ],
@@ -214,17 +228,16 @@ export const CATALOG: CatalogEndpoint[] = [
   },
   {
     id: 'group.members.list',
-    name: "获取群成员列表（内邀 / 白名单接口）",
+    name: "获取群成员列表（内邀 / 白名单，cursor 分页）",
     category: "群聊管理",
     method: 'GET',
     path: "/v2/groups/{group_openid}/members",
-    description: "获取群成员列表（内邀 / 白名单接口）",
+    description: "每次最多 30 条；首页不传 cursor，之后传响应里的 next_cursor",
     pathParams: [
       { name: 'group_openid', label: "群 OpenID", kind: 'group' },
     ],
     query: [
-      { name: 'start_index', label: "起始下标", placeholder: "0" },
-      { name: 'limit', label: "数量", placeholder: "20" },
+      { name: 'cursor', label: "游标", placeholder: "" },
     ],
     body: "",
     auth: true,
@@ -235,7 +248,7 @@ export const CATALOG: CatalogEndpoint[] = [
     category: "群聊管理",
     method: 'GET',
     path: "/v2/groups/{group_openid}/members/{member_openid}",
-    description: "获取群成员信息（内邀 / 白名单接口）",
+    description: "member_openid 使用该群内的成员 OpenID",
     pathParams: [
       { name: 'group_openid', label: "群 OpenID", kind: 'group' },
       { name: 'member_openid', label: "成员 OpenID", kind: 'user' },
@@ -275,16 +288,16 @@ export const CATALOG: CatalogEndpoint[] = [
   },
   {
     id: 'group.batch_remove',
-    name: "群成员批量移除（可同时拉黑）",
+    name: "群成员批量移除（单次最多 20 人）",
     category: "群聊管理",
     method: 'POST',
     path: "/v2/groups/{group_openid}/batch_remove_members",
-    description: "群成员批量移除（可同时拉黑）",
+    description: "需群主与机器人都开启「移除群成员」权限（错误码 40103011 / 40103012）",
     pathParams: [
       { name: 'group_openid', label: "群 OpenID", kind: 'group' },
     ],
     query: [],
-    body: "{\"member_openids\": [], \"add_to_member_blacklist\": false}",
+    body: "{\"member_openids\": []}",
     auth: true,
   },
   {
@@ -293,14 +306,11 @@ export const CATALOG: CatalogEndpoint[] = [
     category: "群聊管理",
     method: 'POST',
     path: "/v2/groups/{group_openid}/member_blacklist",
-    description: "op：add / del，单次最多 20 人",
+    description: "op：add 加入 / del 移出；目标仍在群中时无法拉黑",
     pathParams: [
       { name: 'group_openid', label: "群 OpenID", kind: 'group' },
     ],
-    query: [
-      { name: 'cursor', label: "游标", placeholder: "" },
-      { name: 'limit', label: "数量", placeholder: "20" },
-    ],
+    query: [],
     body: "{\"op\": \"add\", \"member_openids\": []}",
     auth: true,
   },

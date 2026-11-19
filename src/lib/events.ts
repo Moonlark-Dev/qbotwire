@@ -57,6 +57,7 @@ interface CacheUser {
 interface CacheGroup {
   name?: string | null
   avatar?: string | null
+  unionGroupOpenid?: string | null
 }
 
 /**
@@ -134,18 +135,26 @@ function userEntity(
   }
 }
 
-function groupEntity(openidValue: unknown, lookup?: EventLookup): EventEntity | null {
+function groupEntity(
+  openidValue: unknown,
+  lookup?: EventLookup,
+  suppliedUnionGroupOpenid?: unknown,
+): EventEntity | null {
   const openid = text(openidValue).trim()
   if (!openid) return null
   const cached = lookup?.group?.(openid)
   const name = text(cached?.name).trim()
   const avatar = text(cached?.avatar).trim()
+  const suppliedUnion = text(suppliedUnionGroupOpenid).trim()
+  const cachedUnion = text(cached?.unionGroupOpenid).trim()
+  const unionOpenid = suppliedUnion || cachedUnion
   return {
     kind: 'group',
     openid,
     name: name || null,
     avatar: avatar || null,
-    fromCache: Boolean(name || avatar),
+    unionOpenid: unionOpenid || null,
+    fromCache: Boolean(name || avatar || (!suppliedUnion && cachedUnion)),
   }
 }
 
@@ -173,6 +182,8 @@ const EVENT_TITLES: Record<string, { title: string; category: EventCategory }> =
   FRIEND_DEL: { title: '好友删除', category: 'member' },
   GROUP_ADD_ROBOT: { title: '机器人入群', category: 'lifecycle' },
   GROUP_DEL_ROBOT: { title: '机器人离群', category: 'lifecycle' },
+  GROUP_MEMBER_ADD: { title: '群成员加入', category: 'member' },
+  GROUP_MEMBER_REMOVE: { title: '群成员退出', category: 'member' },
   GROUP_MSG_REJECT: { title: '群消息被拒收', category: 'lifecycle' },
   GROUP_MSG_RECEIVE: { title: '重新接收群消息', category: 'lifecycle' },
   READY: { title: '网关就绪', category: 'lifecycle' },
@@ -182,6 +193,15 @@ const EVENT_TITLES: Record<string, { title: string; category: EventCategory }> =
 
 export function stripMentions(content: string): string {
   return content.replace(/<@!?[^>]+>/g, '').trim()
+}
+
+/** Group lifecycle events use Unix seconds; messages use RFC3339 strings. */
+function timestampText(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value
+    return new Date(ms).toISOString()
+  }
+  return text(value)
 }
 
 function messageView(
@@ -202,23 +222,31 @@ function messageView(
     : isC2c
       ? author.user_openid ?? author.id
       : author.member_openid ?? author.id
+  // 2026-11-16: group senders carry `member_nickname`, and every group / C2C
+  // sender now also ships a nickname and avatar, so the payload wins over the
+  // local cache whenever it is present.
+  const authorName =
+    isGuild || isC2c ? author.username : author.member_nickname ?? author.username
   const authorEntity = userEntity(
     authorOpenid,
     {
-      name: author.username,
+      name: authorName,
       avatar: author.avatar,
       unionOpenid: author.union_openid,
     },
     lookup,
   )
-  const group = !isGuild && !isC2c ? groupEntity(data.group_openid, lookup) : null
+  const isGroupChat = !isGuild && !isC2c
+  const group = isGroupChat
+    ? groupEntity(data.group_openid, lookup, data.union_group_openid)
+    : null
   const mentionEntities = rawMentions
     .map((item) => {
       const mention = record(item)
       return userEntity(
         mention.member_openid ?? mention.user_openid ?? mention.id,
         {
-          name: mention.username,
+          name: mention.member_nickname ?? mention.username,
           avatar: mention.avatar,
           unionOpenid: mention.union_openid,
           bot: mention.bot,
@@ -230,12 +258,16 @@ function messageView(
 
   const fieldsList = fields(
     field('消息 ID', data.id),
-    !isGuild && !isC2c ? entityField('群 OpenID', data.group_openid, group) : null,
+    isGroupChat ? entityField('群 OpenID', data.group_openid, group) : null,
+    isGroupChat ? field('Union 群 OpenID', data.union_group_openid) : null,
     isC2c ? entityField('用户 OpenID', author.user_openid ?? author.id, authorEntity) : null,
-    !isGuild && !isC2c
+    isGroupChat
       ? entityField('成员 OpenID', author.member_openid ?? author.id, authorEntity)
       : null,
+    isGroupChat ? field('群昵称', author.member_nickname, false) : null,
+    isGroupChat || isC2c ? field('昵称', author.username, false) : null,
     field('Union OpenID', author.union_openid),
+    isGroupChat ? field('群内角色', author.member_role, false) : null,
     isGuild ? field('频道 ID', data.guild_id) : null,
     isGuild ? field('子频道 ID', data.channel_id) : null,
     isGuild ? field('发送者', author.username, false) : null,
@@ -304,18 +336,46 @@ export function formatEvent(event: GatewayEvent, lookup?: EventLookup): Formatte
     case 'DIRECT_MESSAGE_CREATE':
       return messageView(type, data, title, lookup)
     case 'GROUP_ADD_ROBOT':
-    case 'GROUP_DEL_ROBOT':
+    case 'GROUP_DEL_ROBOT': {
+      const group = groupEntity(data.group_openid, lookup, data.union_group_openid)
       return {
         title,
         subtitle: text(data.group_openid),
         category,
         fields: fields(
-          field('群 OpenID', data.group_openid),
+          entityField('群 OpenID', data.group_openid, group),
+          field('Union 群 OpenID', data.union_group_openid),
           field('操作者', data.op_member_openid),
-          field('时间', data.timestamp),
+          field('时间', timestampText(data.timestamp)),
         ),
+        group,
         raw: data,
       }
+    }
+    case 'GROUP_MEMBER_ADD':
+    case 'GROUP_MEMBER_REMOVE': {
+      const group = groupEntity(data.group_openid, lookup, data.union_group_openid)
+      const member = userEntity(
+        data.member_openid,
+        { unionOpenid: data.union_openid },
+        lookup,
+      )
+      return {
+        title,
+        subtitle: text(data.member_openid),
+        category,
+        fields: fields(
+          entityField('群 OpenID', data.group_openid, group),
+          field('Union 群 OpenID', data.union_group_openid),
+          entityField('成员 OpenID', data.member_openid, member),
+          field('用户 OpenID', data.user_openid),
+          field('时间', timestampText(data.timestamp)),
+        ),
+        group,
+        author: member,
+        raw: data,
+      }
+    }
     case 'FRIEND_ADD':
     case 'FRIEND_DEL':
       return {
