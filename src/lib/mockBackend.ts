@@ -502,7 +502,7 @@ export function createMockBackend(): Backend {
         events: [...eventBuffer],
         cache: snapshot(),
         mediaAssets: [...media],
-        version: '1.3.0-preview',
+        version: '1.4.0-preview',
       }
     },
     login,
