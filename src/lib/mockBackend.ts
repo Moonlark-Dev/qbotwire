@@ -428,6 +428,18 @@ export function createMockBackend(): Backend {
       }
     } else if (statusCode === 404) {
       body = { code: 404, message: '演示模式：没有这个接口', path: request.path }
+    } else if (request.path.endsWith('/stream_messages') && request.method === 'POST') {
+      const stream = requestBody ? (JSON.parse(requestBody) as Record<string, unknown>) : {}
+      body = {
+        // 首片返回服务端生成的 stream_msg_id，后续分片要把上一片的 id 带回来。
+        id:
+          typeof stream.stream_msg_id === 'string' && stream.stream_msg_id
+            ? stream.stream_msg_id
+            : 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        timestamp: nowIso(),
+        ext_info: { ref_idx: 'REFIDX_mock===' },
+        remain_msg_len: 880,
+      }
     } else if (request.path.endsWith('/messages') && request.method === 'POST') {
       body = { id: `mock_msg_${Date.now()}`, timestamp: nowIso() }
     } else if (request.path.endsWith('/messages') || request.path.includes('/messages/')) {

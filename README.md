@@ -14,11 +14,15 @@ QBotWire 首先是一个 QQ Bot：它换取 AccessToken、连接官方 WebSocket
 
 ### 发送
 
-- 内置 **56 个 QQ Bot API v2 接口**，按「基础 / 群聊 / 单聊 / 群聊管理 / 频道 / 频道成员 / 频道身份组 / 频道私信 / 互动 / 富媒体 / 素材」分组，支持搜索。
+- 内置 **57 个 QQ Bot API v2 接口**，按「基础 / 群聊 / 单聊 / 群聊管理 / 频道 / 频道成员 / 频道身份组 / 频道私信 / 互动 / 富媒体 / 素材」分组，支持搜索。
 - 路径参数（`{group_openid}`、`{openid}` 等）会拆成独立输入框，**可从缓存里搜索群 / 用户**，也可以手动输入。
 - 查询参数、JSON 请求体均可编辑；请求体提供模板、格式化和实时校验。
 - 发送消息接口提供**消息构造弹窗**：可视化填写文本 / Markdown / Ark / Embed / 富媒体消息，支持按钮、消息引用与被动回复 `msg_id`，实时预览并一键填入请求体。Markdown 直接填写 `markdown.content` 即可发送（无需申请模板），旧模板消息仍可通过「模板」方式兼容发送。
 - 被动回复按 2026-11-17 新规提示：群消息 **60 分钟**内有效、每条默认最多 5 次（机器人管理员为群主 / 群管理员时 50 次）；群消息的 `msg_id` 也可以直接在「发送单聊消息」里私聊回复该消息的发送者（需好友关系，与群内回复共用次数）。
+- 支持**流式发送单聊消息**（`POST /v2/users/{user_openid}/stream_messages`）：首片不带
+  `stream_msg_id`、`index=0`，响应里的 `id` 就是后续分片要带的 `stream_msg_id`，`index` 递增，
+  最后一片 `input_state=10`；`content_type` 可用 `markdown`，`input_mode=replace` 时
+  `content_raw` 是当前完整正文（已下发的前缀不可修改）。
 - 请求体支持「插入 OpenID」：弹窗里搜索缓存中的用户或群聊，选中后直接插入到光标位置。
 - **多标签页**：同时打开多个接口，各自保留请求与响应。
 - 自定义请求成功后可以自动保存；也可以随时手动保存、更新、删除。已保存接口会出现在目录顶部的「已保存接口」里。
@@ -192,6 +196,7 @@ src-tauri/
   `file_data`（base64）或 `url` 走 JSON 接口。
 - 素材图片的二进制直传（`PUT presigned_url`）只在「素材」页完成；接口目录提供 prepare / complete
   等 JSON 步骤，无法在请求体里填二进制。平台 `preview_url` 不落盘，本机只缓存压缩后的缩略图。
+- 流式发送需要手动把上一片响应里的 `stream_msg_id` 填进下一片请求体，QBotWire 不代跑分片循环。
 - 不提供 Webhook 回调服务：QBotWire 走 WebSocket 网关。
 - 内置接口目录参考 https://bot.q.qq.com/wiki/develop/api-v2/ ；不同机器人权限（如内邀接口）
   仍受 QQ 平台限制。

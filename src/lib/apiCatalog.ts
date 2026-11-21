@@ -150,6 +150,20 @@ export const CATALOG: CatalogEndpoint[] = [
     message: 'c2c',
   },
   {
+    id: 'c2c.stream_message',
+    name: "流式发送单聊消息（分片）",
+    category: "单聊",
+    method: 'POST',
+    path: "/v2/users/{user_openid}/stream_messages",
+    description: "首片 index=0 不带 stream_msg_id，响应里的 id 即后续分片要带的 stream_msg_id；index 递增，最后一片 input_state=10；支持 content_type=markdown（50 QPS）",
+    pathParams: [
+      { name: 'user_openid', label: "用户 OpenID", kind: 'user' },
+    ],
+    query: [],
+    body: "{\"input_mode\": \"replace\", \"input_state\": 1, \"index\": 0, \"content_type\": \"markdown\", \"content_raw\": \"正在生成回答，请稍候\", \"msg_id\": \"\", \"msg_seq\": 1}",
+    auth: true,
+  },
+  {
     id: 'c2c.delete_message',
     name: "撤回单聊消息",
     category: "单聊",

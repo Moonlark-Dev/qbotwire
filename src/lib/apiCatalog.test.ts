@@ -117,6 +117,26 @@ describe('API catalogue', () => {
     expect(JSON.parse(getEndpoint('media.complete')!.body)).toEqual({ upload_id: '', md5: '' })
   })
 
+  // 流式发送单聊消息：同一 stream_msg_id 下按 index 递增分批下发。
+  it('lists the streaming c2c message endpoint', () => {
+    const endpoint = getEndpoint('c2c.stream_message')
+    expect(endpoint?.method).toBe('POST')
+    expect(endpoint?.path).toBe('/v2/users/{user_openid}/stream_messages')
+    expect(endpoint?.category).toBe('单聊')
+    expect(endpoint?.query).toEqual([])
+    expect(endpoint?.auth).toBe(true)
+    expect(endpoint?.pathParams.map((param) => param.name)).toEqual(['user_openid'])
+    expect(JSON.parse(endpoint!.body)).toEqual({
+      input_mode: 'replace',
+      input_state: 1,
+      index: 0,
+      content_type: 'markdown',
+      content_raw: '正在生成回答，请稍候',
+      msg_id: '',
+      msg_seq: 1,
+    })
+  })
+
   // 2026-11-16 changelog: GET /v2/users/{user_openid}/info.
   it('lists the 2026-11-16 user profile endpoint', () => {
     const endpoint = getEndpoint('user.info')
