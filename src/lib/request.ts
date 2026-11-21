@@ -1,4 +1,4 @@
-import type { CatalogEndpoint } from './apiCatalog'
+import type { CatalogEndpoint, IdKind } from './apiCatalog'
 import type { ApiRequest, ApiResponse, QueryParam, SavedEndpoint } from '@/types'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -31,6 +31,35 @@ let tabCounter = 0
 
 export function pathParamNames(path: string): string[] {
   return [...path.matchAll(/\{([a-zA-Z0-9_]+)\}/g)].map((match) => match[1])
+}
+
+/**
+ * Custom requests carry no catalogue metadata, so their `{group_openid}` /
+ * `{openid}` placeholders would otherwise be treated as generic IDs and lose
+ * the cached OpenID picker. Guess the kind from the placeholder name instead;
+ * built-in endpoints keep their explicit metadata.
+ */
+export function inferPathParamKind(name: string): IdKind {
+  const needle = name.toLowerCase()
+  if (needle.includes('group')) return 'group'
+  if (needle.includes('openid') || needle.includes('user') || needle.includes('member')) {
+    return 'user'
+  }
+  if (needle.includes('channel')) return 'channel'
+  if (needle.includes('guild')) return 'guild'
+  return 'generic'
+}
+
+/** Human label for a custom request placeholder whose type was inferred. */
+export function inferPathParamLabel(name: string): string {
+  const kind = inferPathParamKind(name)
+  if (kind === 'group') return '群 OpenID'
+  if (kind === 'user') {
+    return name.toLowerCase().includes('member') ? '成员 OpenID' : '用户 OpenID'
+  }
+  if (kind === 'channel') return '子频道 ID'
+  if (kind === 'guild') return '频道 ID'
+  return name
 }
 
 export function applyPathParams(path: string, values: Record<string, string>): string {

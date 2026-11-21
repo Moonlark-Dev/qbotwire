@@ -3,6 +3,8 @@ import {
   applyPathParams,
   autoEndpointName,
   blankTab,
+  inferPathParamKind,
+  inferPathParamLabel,
   makeSaved,
   missingPathParams,
   pathParamNames,
@@ -34,6 +36,27 @@ describe('path parameters', () => {
   it('keeps unfilled placeholders so validation can report them', () => {
     expect(applyPathParams('/x/{id}', {})).toBe('/x/{id}')
     expect(missingPathParams('/x/{id}', {})).toEqual(['id'])
+  })
+
+  it('infers OpenID kinds for custom requests without catalogue metadata', () => {
+    expect(inferPathParamKind('group_openid')).toBe('group')
+    expect(inferPathParamKind('group_id')).toBe('group')
+    expect(inferPathParamKind('openid')).toBe('user')
+    expect(inferPathParamKind('user_openid')).toBe('user')
+    expect(inferPathParamKind('member_openid')).toBe('user')
+    expect(inferPathParamKind('message_id')).toBe('generic')
+    expect(inferPathParamKind('channel_id')).toBe('channel')
+    expect(inferPathParamKind('guild_id')).toBe('guild')
+    expect(inferPathParamKind('id')).toBe('generic')
+  })
+
+  it('labels inferred path params like the built-in catalogue', () => {
+    expect(inferPathParamLabel('group_openid')).toBe('群 OpenID')
+    expect(inferPathParamLabel('user_openid')).toBe('用户 OpenID')
+    expect(inferPathParamLabel('member_openid')).toBe('成员 OpenID')
+    expect(inferPathParamLabel('channel_id')).toBe('子频道 ID')
+    expect(inferPathParamLabel('guild_id')).toBe('频道 ID')
+    expect(inferPathParamLabel('id')).toBe('id')
   })
 })
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import type { RequestTab } from '@/lib/request'
-import { methodAllowsBody, pathParamNames } from '@/lib/request'
-import { getEndpoint, type IdKind } from '@/lib/apiCatalog'
+import { methodAllowsBody, inferPathParamKind, inferPathParamLabel, pathParamNames } from '@/lib/request'
+import { getEndpoint } from '@/lib/apiCatalog'
 import { messageScopeForPath, type MessageScope } from '@/lib/messageBuilder'
 import { openExternal } from '@/lib/external'
 import { app, updateSettings } from '@/stores/app'
@@ -61,7 +61,13 @@ function openDocs(event: MouseEvent) {
 const params = computed(() =>
   pathParamNames(props.tab.path).map((name) => {
     const meta = endpoint.value?.pathParams.find((item) => item.name === name)
-    return { name, label: meta?.label ?? name, kind: (meta?.kind ?? 'generic') as IdKind }
+    return {
+      name,
+      label: meta?.label ?? inferPathParamLabel(name),
+      // 自定义请求没有目录元数据，按占位符名字推断类型，路径参数才能继续用
+      // 缓存里的用户 / 群聊快捷插入。
+      kind: meta?.kind ?? inferPathParamKind(name),
+    }
   }),
 )
 

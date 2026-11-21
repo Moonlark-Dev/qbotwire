@@ -3,7 +3,8 @@ import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import RequestEditor from './RequestEditor.vue'
 import { app } from '@/stores/app'
-import { blankTab, type RequestTab } from '@/lib/request'
+import { blankTab, tabFromEndpoint, type RequestTab } from '@/lib/request'
+import { getEndpoint } from '@/lib/apiCatalog'
 import type { Credentials, GroupEntry, UserEntry } from '@/types'
 
 const credentials: Credentials = {
@@ -165,6 +166,80 @@ describe('RequestEditor quick OpenID insert', () => {
 
     await wrapper.find('button[title^="从缓存中选择"]').trigger('click')
     expect(wrapper.find('.empty').text()).toContain('还没有用户缓存')
+  })
+})
+
+describe('RequestEditor path parameter OpenID picker', () => {
+  beforeEach(() => {
+    app.credentials = credentials
+    app.cache.users = users.map((user) => ({ ...user }))
+    app.cache.groups = groups.map((group) => ({ ...group }))
+  })
+
+  afterEach(() => {
+    wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
+    app.credentials = null
+    app.cache.users = []
+    app.cache.groups = []
+  })
+
+  it('offers cached groups for a group placeholder in a custom request', async () => {
+    const tab = {
+      ...blankTab(),
+      path: '/v2/groups/{group_openid}/messages',
+      pathParams: { group_openid: '' },
+    }
+    const wrapper = mountEditor(tab)
+    const picker = wrapper.find('.param .id-picker')
+
+    expect(wrapper.find('.param-label').text()).toContain('群 OpenID')
+    expect(picker.find('.picker-toggle').exists()).toBe(true)
+    await picker.find('input.input').trigger('focus')
+
+    const options = picker.findAll('.option')
+    expect(options).toHaveLength(1)
+    expect(options[0].text()).toContain('Moonlark 开发者群')
+    expect(options[0].text()).toContain('GROUP_OPENID_BBBB')
+
+    await options[0].trigger('click')
+    expect(tab.pathParams.group_openid).toBe('GROUP_OPENID_BBBB')
+  })
+
+  it('offers cached users for a user placeholder in a custom request', async () => {
+    const tab = {
+      ...blankTab(),
+      path: '/v2/users/{user_openid}/info',
+      pathParams: { user_openid: '' },
+    }
+    const wrapper = mountEditor(tab)
+    const picker = wrapper.find('.param .id-picker')
+
+    expect(wrapper.find('.param-label').text()).toContain('用户 OpenID')
+    await picker.find('input.input').trigger('focus')
+    const options = picker.findAll('.option')
+    expect(options).toHaveLength(1)
+    expect(options[0].text()).toContain('小灯')
+
+    await options[0].trigger('click')
+    expect(tab.pathParams.user_openid).toBe('USER_OPENID_AAAA')
+  })
+
+  it('does not attach the picker to placeholders without an OpenID hint', () => {
+    const tab = { ...blankTab(), path: '/v2/things/{id}', pathParams: { id: '' } }
+    const wrapper = mountEditor(tab)
+
+    expect(wrapper.find('.param .picker-toggle').exists()).toBe(false)
+  })
+
+  it('keeps built-in generic path params plain', () => {
+    const tab = {
+      ...tabFromEndpoint(getEndpoint('group.delete_message')!),
+      pathParams: { group_openid: '', message_id: '' },
+    }
+    const wrapper = mountEditor(tab)
+
+    expect(wrapper.findAll('.param')[0].find('.picker-toggle').exists()).toBe(true)
+    expect(wrapper.findAll('.param')[1].find('.picker-toggle').exists()).toBe(false)
   })
 })
 
