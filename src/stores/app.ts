@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import { backend } from '@/lib/backend'
+import { mediaApiError, mergePlatformMedia } from '@/lib/media'
 import type {
   ApiResponse,
   Bootstrap,
@@ -7,6 +8,8 @@ import type {
   ConnectionStatus,
   Credentials,
   GatewayEvent,
+  MediaAsset,
+  MediaUploadInput,
   PageKey,
   SavedEndpoint,
   Settings,
@@ -28,6 +31,7 @@ export interface AppState {
   settings: Settings
   savedEndpoints: SavedEndpoint[]
   cache: CacheSnapshot
+  mediaAssets: MediaAsset[]
   status: ConnectionStatus
   events: GatewayEvent[]
   page: PageKey
@@ -46,6 +50,7 @@ export const app = reactive<AppState>({
   settings: { ...DEFAULT_SETTINGS },
   savedEndpoints: [],
   cache: { groups: [], users: [] },
+  mediaAssets: [],
   status: { state: 'disconnected' },
   events: [],
   page: 'send',
@@ -107,6 +112,7 @@ export async function bootstrap() {
     applyConfig(data.config)
     app.status = data.status
     app.cache = data.cache
+    app.mediaAssets = data.mediaAssets ?? []
     app.events = data.events.slice(0, app.settings.eventLimit)
     backend.onEvent((event) => {
       app.events.unshift(event)
@@ -175,6 +181,87 @@ export async function clearEvents() {
 
 export async function refreshCache() {
   app.cache = await backend.getCache()
+}
+
+export async function refreshMediaAssets() {
+  app.mediaAssets = await backend.listMediaAssets()
+}
+
+/** Persist local metadata (thumbnail / dimensions) for uploaded or synced assets. */
+export async function saveMediaAssets(assets: MediaAsset[]): Promise<MediaAsset[]> {
+  app.mediaAssets = await backend.saveMediaAssets(assets)
+  return app.mediaAssets
+}
+
+/** Remove one link from the local cache only; the platform copy stays. */
+export async function dropMediaAsset(imageId: string): Promise<MediaAsset[]> {
+  app.mediaAssets = await backend.removeMediaAsset(imageId)
+  return app.mediaAssets
+}
+
+export async function clearMediaAssets(): Promise<MediaAsset[]> {
+  app.mediaAssets = await backend.clearMediaAssets()
+  return app.mediaAssets
+}
+
+/** Upload one image through the backend and remember its stable link. */
+export async function uploadMediaImage(input: MediaUploadInput): Promise<MediaAsset> {
+  const asset = await backend.uploadMediaImage(input)
+  await saveMediaAssets([asset])
+  return asset
+}
+
+/**
+ * Pull every valid platform image (20 per page) into the local link cache. The
+ * platform list is the source of truth for `expires_at`; local thumbnails and
+ * content types are preserved by `mergePlatformMedia`.
+ */
+export async function syncMediaAssets(): Promise<number> {
+  const credentials = app.credentials
+  if (!credentials) throw new Error('还没有配置 Bot 凭据，请先登录')
+  const rows: unknown[] = []
+  let cursor = ''
+  for (let page = 0; page < 10; page += 1) {
+    const response = await sendRequest({
+      method: 'GET',
+      path: '/v2/media-images',
+      query: cursor ? [{ key: 'cursor', value: cursor, enabled: true }] : [],
+      body: '',
+    })
+    if (!response.ok) throw new Error(mediaApiError(response))
+    const body = response.body
+    if (!body || typeof body !== 'object' || Array.isArray(body)) break
+    const record = body as Record<string, unknown>
+    if (Array.isArray(record.images)) rows.push(...record.images)
+    const next = typeof record.next_cursor === 'string' ? record.next_cursor : ''
+    if (!next) break
+    cursor = next
+  }
+  const merged = mergePlatformMedia(app.mediaAssets, rows, credentials.appId)
+  app.mediaAssets = await backend.saveMediaAssets(merged)
+  return rows.length
+}
+
+/**
+ * Delete one image from the platform, then release its local cache entry.
+ * `40035008` means it is already gone, so the local entry is still removed.
+ */
+export async function deleteMediaAsset(imageId: string): Promise<void> {
+  const response = await sendRequest({
+    method: 'DELETE',
+    path: `/v2/media-images/${encodeURIComponent(imageId)}/delete`,
+    query: [],
+    body: '',
+  })
+  if (!response.ok) {
+    const body = response.body
+    const code =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as Record<string, unknown>).code
+        : undefined
+    if (code !== 40035008) throw new Error(mediaApiError(response))
+  }
+  app.mediaAssets = await backend.removeMediaAsset(imageId)
 }
 
 export async function clearCache(kind?: 'groups' | 'users') {

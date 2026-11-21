@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::models::{
     ApiRequest, ApiResponse, Bootstrap, CacheSnapshot, ConnectionStatus, Credentials, GroupEntry,
-    LogoutOptions, SavedEndpoint, Settings, StoredConfig, UserEntry,
+    LogoutOptions, MediaAsset, MediaUploadInput, SavedEndpoint, Settings, StoredConfig, UserEntry,
 };
 use crate::Core;
 
@@ -131,6 +131,47 @@ pub async fn refresh_user(
 ) -> Result<Option<UserEntry>, String> {
     let core = core.inner().clone();
     core.refresh_user(&openid)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn list_media_assets(core: State<'_, Core>) -> Vec<MediaAsset> {
+    core.media.list()
+}
+
+#[tauri::command]
+pub fn save_media_assets(
+    core: State<'_, Core>,
+    assets: Vec<MediaAsset>,
+) -> Result<Vec<MediaAsset>, String> {
+    core.media
+        .upsert_many(assets)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn remove_media_asset(
+    core: State<'_, Core>,
+    image_id: String,
+) -> Result<Vec<MediaAsset>, String> {
+    core.media
+        .remove(&image_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn clear_media_assets(core: State<'_, Core>) -> Result<Vec<MediaAsset>, String> {
+    core.media.clear().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn upload_media_image(
+    core: State<'_, Core>,
+    input: MediaUploadInput,
+) -> Result<MediaAsset, String> {
+    let core = core.inner().clone();
+    crate::api::upload_media_image(&core, input)
         .await
         .map_err(|error| error.to_string())
 }

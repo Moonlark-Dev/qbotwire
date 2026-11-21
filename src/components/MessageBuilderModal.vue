@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import {
   MESSAGE_KINDS,
   MESSAGE_SCOPE_LABELS,
   buildMessageBody,
   parseKeyboardJson,
   parseMessageBody,
+  passiveReplyHint,
+  passiveReplyMsgIdPlaceholder,
   scopeSupportsMedia,
   validateMessageDraft,
   type MessageDraft,
@@ -19,13 +21,17 @@ import {
   Copy,
   FileText,
   Image,
+  ImagePlus,
   LayoutTemplate,
   Plus,
   Type,
   Wand2,
   X,
 } from 'lucide-vue-next'
+import { insertAtSelection, markdownImageSnippet } from '@/lib/media'
+import type { MediaAsset } from '@/types'
 import JsonView from './JsonView.vue'
+import MediaPickerModal from './MediaPickerModal.vue'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ scope: MessageScope; body: string }>()
@@ -85,10 +91,53 @@ const preview = computed(() => buildMessageBody(draft, props.scope))
 const previewText = computed(() => JSON.stringify(preview.value, null, 2))
 const validationError = computed(() => validateMessageDraft(draft, props.scope))
 const keyboardError = computed(() => parseKeyboardJson(draft.keyboardJson).error)
+const replyHint = computed(() => passiveReplyHint(props.scope))
+const msgIdPlaceholder = computed(() => passiveReplyMsgIdPlaceholder(props.scope))
 const copied = ref(false)
+
+/** Markdown caret tracking for the material-library quick insert. */
+const markdownInput = ref<HTMLTextAreaElement | null>(null)
+const markdownCaret = ref<{ start: number; end: number } | null>(null)
+const mediaPickerOpen = ref(false)
 
 function setKind(kind: MessageKind) {
   draft.kind = kind
+}
+
+function rememberMarkdownCaret() {
+  const element = markdownInput.value
+  if (!element) return
+  // 还没点进过输入框时 selectionStart 恒为 0，按「追加到末尾」处理。
+  if (document.activeElement !== element) {
+    markdownCaret.value = { start: element.value.length, end: element.value.length }
+    return
+  }
+  markdownCaret.value = {
+    start: element.selectionStart ?? element.value.length,
+    end: element.selectionEnd ?? element.value.length,
+  }
+}
+
+function openMediaPicker() {
+  rememberMarkdownCaret()
+  mediaPickerOpen.value = true
+}
+
+function insertMediaAsset(
+  asset: MediaAsset,
+  options: { width: number | null; height: number | null },
+) {
+  const snippet = markdownImageSnippet(asset, options)
+  const result = insertAtSelection(draft.markdownContent, snippet, markdownCaret.value)
+  draft.markdownContent = result.text
+  mediaPickerOpen.value = false
+  markdownCaret.value = { start: result.caret, end: result.caret }
+  void nextTick(() => {
+    const element = markdownInput.value
+    if (!element) return
+    element.focus()
+    element.setSelectionRange(result.caret, result.caret)
+  })
 }
 
 function addMarkdownParam() {
@@ -198,23 +247,40 @@ function apply() {
           </div>
 
           <template v-if="draft.markdownMode === 'content'">
-            <label class="field">
-              <span class="field-label">
-                markdown.content
-                <span class="counter">{{ draft.markdownContent.length }} 字</span>
-              </span>
+            <div class="field">
+              <div class="field-head">
+                <span class="field-label">
+                  markdown.content
+                  <span class="counter">{{ draft.markdownContent.length }} 字</span>
+                </span>
+                <button
+                  class="add-btn"
+                  type="button"
+                  title="从本机素材库插入 qqbot-media 图片"
+                  @mousedown.prevent
+                  @click="openMediaPicker"
+                >
+                  <ImagePlus :size="11" /> 插入素材
+                </button>
+              </div>
               <textarea
+                ref="markdownInput"
                 v-model="draft.markdownContent"
                 class="textarea markdown-input"
                 rows="8"
                 placeholder="## 标题&#10;&#10;正文支持 **加粗**、*斜体*、[链接](https://example.com) 和列表。"
+                @input="rememberMarkdownCaret"
+                @click="rememberMarkdownCaret"
+                @keyup="rememberMarkdownCaret"
+                @select="rememberMarkdownCaret"
               />
-            </label>
+            </div>
             <p class="field-hint">
               单聊 / 群聊自定义 Markdown 已全量开放，无需申请模板。
               <template v-if="scope === 'channel' || scope === 'dm'">
                 频道场景仍需内邀开通后才能发送自定义 Markdown。
               </template>
+              需要图片时可点「插入素材」，使用素材库里缓存的 qqbot-media 链接。
             </p>
           </template>
 
@@ -407,7 +473,7 @@ function apply() {
                 v-model="draft.msgId"
                 class="input mono"
                 type="text"
-                placeholder="事件里的消息 ID，主动消息留空"
+                :placeholder="msgIdPlaceholder"
                 spellcheck="false"
               />
             </label>
@@ -424,7 +490,7 @@ function apply() {
             </label>
           </div>
           <p class="field-hint">
-            被动回复需在收到消息后 5 分钟内发出并填写 msg_id；同一 msg_id 的多条回复用 msg_seq 区分，主动消息留空即可。
+            {{ replyHint }}
           </p>
         </section>
 
@@ -498,6 +564,12 @@ function apply() {
       </button>
     </template>
   </Modal>
+
+  <MediaPickerModal
+    v-if="mediaPickerOpen"
+    @pick="insertMediaAsset"
+    @close="mediaPickerOpen = false"
+  />
 </template>
 
 <style scoped>

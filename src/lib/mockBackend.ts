@@ -16,6 +16,8 @@ import type {
   Credentials,
   GatewayEvent,
   GroupEntry,
+  MediaAsset,
+  MediaUploadInput,
   SavedEndpoint,
   Settings,
   StoredConfig,
@@ -24,6 +26,7 @@ import type {
 
 const CONFIG_KEY = 'qbotwire.mock.config.v1'
 const CACHE_KEY = 'qbotwire.mock.cache.v1'
+const MEDIA_KEY = 'qbotwire.mock.media.v1'
 const EVENT_LIMIT = 200
 
 const DEMO_BOT = {
@@ -143,6 +146,46 @@ function defaultCache(): CacheSnapshot {
   return { groups: defaultGroups(), users: defaultUsers() }
 }
 
+function demoMediaThumb(seed: string, label: string): string {
+  const color = PALETTE[hashString(seed) % PALETTE.length]
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".95"/><stop offset="1" stop-color="#0f172a" stop-opacity=".85"/></linearGradient></defs><rect width="320" height="200" fill="url(#g)"/><text x="160" y="112" font-family="system-ui,sans-serif" font-size="34" font-weight="600" fill="#fff" text-anchor="middle">${label}</text></svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function defaultMedia(): MediaAsset[] {
+  const now = Math.floor(Date.now() / 1000)
+  return [
+    {
+      imageId: '102030405_demoKline01',
+      url: 'qqbot-media://image/v1/demoKlineTokenA1b2C3d4',
+      fileName: 'kline.png',
+      contentType: 'image/png',
+      size: 40156,
+      width: 800,
+      height: 400,
+      thumbnail: demoMediaThumb('kline-demo', 'K线'),
+      appId: '102030405',
+      createdAt: now - 3 * 86_400,
+      expiresAt: now + 87 * 86_400,
+      source: 'upload',
+    },
+    {
+      imageId: '102030405_demoCover02',
+      url: 'qqbot-media://image/v1/demoCoverTokenE5f6G7h8',
+      fileName: 'cover.webp',
+      contentType: 'image/webp',
+      size: 183_000,
+      width: 1200,
+      height: 630,
+      thumbnail: demoMediaThumb('cover-demo', '封面图'),
+      appId: '102030405',
+      createdAt: now - 20 * 86_400,
+      expiresAt: now + 70 * 86_400,
+      source: 'sync',
+    },
+  ]
+}
+
 const SAMPLE_MESSAGES = [
   '今天的构建脚本跑通了吗？',
   '这个事件格式化得不错，双击看看原始 JSON。',
@@ -158,6 +201,7 @@ const SAMPLE_GROUPS = ['g_demo_1001', 'g_demo_1002']
 export function createMockBackend(): Backend {
   let config = readJson<StoredConfig>(CONFIG_KEY, defaultConfig())
   let cache = readJson<CacheSnapshot>(CACHE_KEY, defaultCache())
+  let media = readJson<MediaAsset[]>(MEDIA_KEY, defaultMedia())
   let status: ConnectionStatus = { state: 'disconnected' }
   let timer: ReturnType<typeof setInterval> | undefined
   let eventSeq = 0
@@ -170,6 +214,7 @@ export function createMockBackend(): Backend {
   const persist = () => {
     writeJson(CONFIG_KEY, config)
     writeJson(CACHE_KEY, cache)
+    writeJson(MEDIA_KEY, media)
   }
 
   const emitStatus = (next: ConnectionStatus) => {
@@ -355,6 +400,24 @@ export function createMockBackend(): Backend {
       body = { url: 'wss://api.sgroup.qq.com/websocket' }
     } else if (request.path.endsWith('/users/@me')) {
       body = DEMO_BOT
+    } else if (request.path === '/v2/media-images' && request.method === 'GET') {
+      body = {
+        images: media.map((asset) => ({
+          image_id: asset.imageId,
+          url: asset.url,
+          file_name: asset.fileName,
+          preview_url: asset.thumbnail ?? null,
+          created_at: asset.createdAt,
+          expires_at: asset.expiresAt,
+        })),
+        next_cursor: '',
+        total: media.length,
+      }
+    } else if (/^\/v2\/media-images\/[^/]+\/delete$/.test(request.path) && request.method === 'DELETE') {
+      const imageId = request.path.split('/')[3]
+      media = media.filter((asset) => asset.imageId !== decodeURIComponent(imageId))
+      persist()
+      body = {}
     } else if (request.path.includes('/v2/groups/') && request.path.endsWith('/info')) {
       const openid = request.path.split('/')[3]
       const group = cache.groups.find((item) => item.openid === openid)
@@ -426,6 +489,7 @@ export function createMockBackend(): Backend {
         status,
         events: [...eventBuffer],
         cache: snapshot(),
+        mediaAssets: [...media],
         version: '1.2.0-preview',
       }
     },
@@ -466,6 +530,51 @@ export function createMockBackend(): Backend {
     },
     async getCache() {
       return snapshot()
+    },
+    async listMediaAssets() {
+      return [...media]
+    },
+    async saveMediaAssets(assets) {
+      for (const asset of assets) {
+        const index = media.findIndex((item) => item.imageId === asset.imageId)
+        if (index >= 0) media[index] = { ...asset }
+        else media.unshift({ ...asset })
+      }
+      persist()
+      return [...media]
+    },
+    async removeMediaAsset(imageId) {
+      media = media.filter((asset) => asset.imageId !== imageId)
+      persist()
+      return [...media]
+    },
+    async clearMediaAssets() {
+      media = []
+      persist()
+      return []
+    },
+    async uploadMediaImage(input: MediaUploadInput) {
+      await new Promise((resolve) => setTimeout(resolve, 520))
+      const seed = `${input.fileName}:${Date.now()}`
+      const token = hashString(seed).toString(36) + hashString(input.dataBase64.slice(0, 64)).toString(36)
+      const now = Math.floor(Date.now() / 1000)
+      const asset: MediaAsset = {
+        imageId: `102030405_${hashString(seed).toString(16)}`,
+        url: `qqbot-media://image/v1/${token}`,
+        fileName: input.fileName.split(/[\\/]/).pop() || input.fileName,
+        contentType: input.contentType,
+        size: Math.floor((input.dataBase64.length * 3) / 4),
+        width: null,
+        height: null,
+        thumbnail: demoMediaThumb(seed, input.fileName.split('.').pop()?.toUpperCase() ?? 'IMG'),
+        appId: config.credentials?.appId ?? DEMO_BOT.id,
+        createdAt: now,
+        expiresAt: now + 90 * 86_400,
+        source: 'upload',
+      }
+      media.unshift(asset)
+      persist()
+      return asset
     },
     async clearEvents() {
       eventSeq = 0

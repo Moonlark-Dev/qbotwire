@@ -14,10 +14,11 @@ QBotWire 首先是一个 QQ Bot：它换取 AccessToken、连接官方 WebSocket
 
 ### 发送
 
-- 内置 **52 个 QQ Bot API v2 接口**，按「基础 / 群聊 / 单聊 / 群聊管理 / 频道 / 频道成员 / 频道身份组 / 频道私信 / 互动 / 富媒体」分组，支持搜索。
+- 内置 **56 个 QQ Bot API v2 接口**，按「基础 / 群聊 / 单聊 / 群聊管理 / 频道 / 频道成员 / 频道身份组 / 频道私信 / 互动 / 富媒体 / 素材」分组，支持搜索。
 - 路径参数（`{group_openid}`、`{openid}` 等）会拆成独立输入框，**可从缓存里搜索群 / 用户**，也可以手动输入。
 - 查询参数、JSON 请求体均可编辑；请求体提供模板、格式化和实时校验。
 - 发送消息接口提供**消息构造弹窗**：可视化填写文本 / Markdown / Ark / Embed / 富媒体消息，支持按钮、消息引用与被动回复 `msg_id`，实时预览并一键填入请求体。Markdown 直接填写 `markdown.content` 即可发送（无需申请模板），旧模板消息仍可通过「模板」方式兼容发送。
+- 被动回复按 2026-11-17 新规提示：群消息 **60 分钟**内有效、每条默认最多 5 次（机器人管理员为群主 / 群管理员时 50 次）；群消息的 `msg_id` 也可以直接在「发送单聊消息」里私聊回复该消息的发送者（需好友关系，与群内回复共用次数）。
 - 请求体支持「插入 OpenID」：弹窗里搜索缓存中的用户或群聊，选中后直接插入到光标位置。
 - **多标签页**：同时打开多个接口，各自保留请求与响应。
 - 自定义请求成功后可以自动保存；也可以随时手动保存、更新、删除。已保存接口会出现在目录顶部的「已保存接口」里。
@@ -32,6 +33,14 @@ QBotWire 首先是一个 QQ Bot：它换取 AccessToken、连接官方 WebSocket
 - 群聊事件会展示 2026-11-16 新增的字段：发送者的**群昵称**（`member_nickname`）与头像、`union_group_openid`（跨应用群标识），并单独格式化群成员加入 / 退出的 `GROUP_MEMBER_ADD` / `GROUP_MEMBER_REMOVE` 事件。
 - 网关支持 Hello / Identify / Heartbeat / Resume、断线自动重连和会话恢复。
 
+### 素材
+
+- 支持 QQ Bot「素材管理」：申请上传（`POST /v2/media-images/prepare`）→ 预签名 URL 直传二进制 → 完成上传（`/complete`），拿到可反复引用的 `qqbot-media://image/v1/<token>` 链接；接口目录里也补充了素材的 prepare / complete / 列表 / 删除接口，可手动联调。
+- 「素材」页支持一次选择多张图片、**3 路并发上传**，逐条显示进度与错误；单张不超过 10 MB，支持 png / jpeg / gif / webp。
+- 上传结果和平台列表都会缓存在本机（`media.json`）：`image_id`、`qqbot-media` 链接、文件名、大小、尺寸、过期时间与本地缩略图。Bot 不在线时也能浏览、复制链接。平台 `preview_url` 是短时效链接，按官方建议不持久化，缩略图由本机生成。
+- 「从平台刷新」按游标分页拉取当前 Bot 的全部有效图片（每页 20 张）并合并进本机缓存；支持从平台删除（释放 100 张配额）或只移出本机缓存。
+- 「发送 → 构造消息 → Markdown」里点「插入素材」，搜索本机素材并插入到光标处，生成 `![文件名 #宽px #高px](qqbot-media://…)`，宽高可选。单张图片 90 天未被引用会滑动过期。
+
 ### 缓存
 
 - Bot 收到群消息或单聊消息时，自动沉淀群聊与用户资料：名称、OpenID、Union OpenID、`union_group_openid`、头像、首次 / 最近出现、消息计数。
@@ -39,6 +48,7 @@ QBotWire 首先是一个 QQ Bot：它换取 AccessToken、连接官方 WebSocket
 - 用户缓存可调用 2026-11-16 新增的 `GET /v2/users/{openid}/info` 刷新昵称、头像、Union OpenID 与「是否接受主动消息」（需要与 Bot 有好友关系）。
 - 支持搜索、手动重命名、单个群信息 / 用户资料刷新、按范围清空。
 - 缓存落盘在本机应用数据目录，供发送页的 ID 选择器使用。
+- 素材链接单独缓存在 `media.json`，与群 / 用户缓存分开；清空群用户缓存不会影响素材。
 
 ## 截图
 
@@ -64,6 +74,7 @@ QBotWire 首先是一个 QQ Bot：它换取 AccessToken、连接官方 WebSocket
 │  api       REST 请求代理          │
 │  gateway   WebSocket 网关客户端   │
 │  cache     群/用户缓存与落盘       │
+│  media     素材链接缓存与上传      │
 │  store     凭据、设置、已保存接口   │
 └───────────────┬──────────────────┘
                 │ HTTPS / WSS
@@ -143,7 +154,7 @@ npm run tauri build
 
 ```bash
 npm run typecheck
-npm test                        # Vitest：事件格式化、接口目录、请求构造、JSON 高亮、表单
+npm test                        # Vitest：事件格式化、接口目录、请求构造、素材链接、JSON 高亮、表单
 cargo test --manifest-path src-tauri/Cargo.toml   # Rust：URL、凭据、存储、缓存、zlib 帧
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
@@ -156,10 +167,11 @@ CI 见 `.github/workflows/ci.yml`：Web 类型检查 / 测试 / 构建，Rust fm
 
 ```text
 src/                     Vue 3 前端
-  components/            页面与可复用组件
+  components/            页面与可复用组件（含 MediaPage / MediaPickerModal）
   lib/apiCatalog.ts      内置 QQ Bot API 目录
   lib/events.ts          事件格式化
   lib/request.ts         请求标签页 / 参数 / 保存逻辑
+  lib/media.ts           素材链接 / Markdown / 上传辅助
   lib/backend.ts         Tauri 后端桥
   lib/mockBackend.ts     浏览器预览用模拟后端
   stores/app.ts          全局状态
@@ -168,6 +180,7 @@ src-tauri/
   src/auth.rs            AccessToken
   src/gateway.rs         WebSocket 网关与状态
   src/cache.rs           群/用户缓存
+  src/media.rs           素材链接缓存与上传流程
   src/store.rs           凭据、设置、已保存接口
   src/commands.rs        Tauri 命令
   tauri.conf.json        窗口与打包配置
@@ -177,6 +190,8 @@ src-tauri/
 
 - 富媒体分片上传的「上传分片」接口需要二进制 body，QBotWire 不代传；上传文件本身可以用
   `file_data`（base64）或 `url` 走 JSON 接口。
+- 素材图片的二进制直传（`PUT presigned_url`）只在「素材」页完成；接口目录提供 prepare / complete
+  等 JSON 步骤，无法在请求体里填二进制。平台 `preview_url` 不落盘，本机只缓存压缩后的缩略图。
 - 不提供 Webhook 回调服务：QBotWire 走 WebSocket 网关。
 - 内置接口目录参考 https://bot.q.qq.com/wiki/develop/api-v2/ ；不同机器人权限（如内邀接口）
   仍受 QQ 平台限制。

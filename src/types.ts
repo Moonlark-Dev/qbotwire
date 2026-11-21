@@ -13,7 +13,7 @@ export type ConnectionState =
   | 'reconnecting'
   | 'error'
 
-export type PageKey = 'send' | 'receive' | 'cache'
+export type PageKey = 'send' | 'receive' | 'cache' | 'media'
 
 export interface Credentials {
   appId: string
@@ -87,6 +87,39 @@ export interface CacheSnapshot {
   users: UserEntry[]
 }
 
+/**
+ * A material image cached locally.
+ *
+ * `url` is the stable `qqbot-media://image/v1/<token>` reference returned by
+ * `POST /v2/media-images/complete`; Markdown embeds it as
+ * `![说明 #宽px #高px](url)`. The platform `preview_url` is short-lived, so only
+ * a small locally generated `thumbnail` is persisted.
+ */
+export interface MediaAsset {
+  imageId: string
+  url: string
+  fileName: string
+  contentType: string
+  size: number
+  width?: number | null
+  height?: number | null
+  thumbnail?: string | null
+  /** AppID owning the image; `qqbot-media` references only work for it. */
+  appId?: string | null
+  /** Unix seconds. */
+  createdAt: number
+  /** Unix seconds; the platform refreshes it on every successful send. */
+  expiresAt: number
+  source: 'upload' | 'sync' | string
+}
+
+export interface MediaUploadInput {
+  fileName: string
+  contentType: string
+  /** Base64 of the original image bytes. */
+  dataBase64: string
+}
+
 export interface QueryParam {
   key: string
   value: string
@@ -144,6 +177,7 @@ export interface Bootstrap {
   status: ConnectionStatus
   events: GatewayEvent[]
   cache: CacheSnapshot
+  mediaAssets: MediaAsset[]
   version: string
 }
 
@@ -159,6 +193,11 @@ export interface Backend {
   saveEndpoint(endpoint: SavedEndpoint): Promise<SavedEndpoint[]>
   deleteEndpoint(id: string): Promise<SavedEndpoint[]>
   getCache(): Promise<CacheSnapshot>
+  listMediaAssets(): Promise<MediaAsset[]>
+  saveMediaAssets(assets: MediaAsset[]): Promise<MediaAsset[]>
+  removeMediaAsset(imageId: string): Promise<MediaAsset[]>
+  clearMediaAssets(): Promise<MediaAsset[]>
+  uploadMediaImage(input: MediaUploadInput): Promise<MediaAsset>
   clearEvents(): Promise<void>
   clearCache(kind?: 'groups' | 'users'): Promise<CacheSnapshot>
   renameCacheEntry(kind: 'group' | 'user', openid: string, name: string): Promise<CacheSnapshot>

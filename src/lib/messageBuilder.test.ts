@@ -4,6 +4,8 @@ import {
   emptyDraft,
   messageScopeForPath,
   parseMessageBody,
+  passiveReplyHint,
+  passiveReplyMsgIdPlaceholder,
   validateMessageDraft,
   type MessageDraft,
 } from './messageBuilder'
@@ -270,5 +272,39 @@ describe('messageScopeForPath', () => {
     ).toBe('group')
     expect(messageScopeForPath('GET', '/v2/groups/G1/messages')).toBeNull()
     expect(messageScopeForPath('POST', '/v2/groups/{group_openid}/files')).toBeNull()
+  })
+})
+// 2026-11-17 changelog：群消息被动回复 60 分钟、次数 5 → 50（管理员/群主），
+// 且群消息 msg_id 可用于单聊接口私聊回复发送者。
+describe('passiveReplyHint', () => {
+  it('documents the 60-minute window and 5 / 50 reply limit for groups', () => {
+    const hint = passiveReplyHint('group')
+    expect(hint).toContain('60 分钟')
+    expect(hint).toContain('5 次')
+    expect(hint).toContain('50 次')
+    expect(hint).toContain('发送单聊消息')
+  })
+
+  it('explains that a group msg_id also works on the C2C endpoint', () => {
+    const hint = passiveReplyHint('c2c')
+    expect(hint).toContain('60 分钟')
+    expect(hint).toContain('4 次')
+    expect(hint).toContain('群消息的 msg_id')
+    expect(hint).toContain('共用')
+  })
+
+  it('keeps channel / DM hints free of group-only rules', () => {
+    for (const scope of ['channel', 'dm'] as const) {
+      const hint = passiveReplyHint(scope)
+      expect(hint).toContain('msg_id')
+      expect(hint).not.toContain('60 分钟')
+    }
+  })
+
+  it('tailors the msg_id placeholder to the reply capability', () => {
+    expect(passiveReplyMsgIdPlaceholder('group')).toContain('群消息')
+    expect(passiveReplyMsgIdPlaceholder('c2c')).toContain('单聊消息 ID')
+    expect(passiveReplyMsgIdPlaceholder('c2c')).toContain('群消息 ID')
+    expect(passiveReplyMsgIdPlaceholder('channel')).toBe('事件里的消息 ID')
   })
 })

@@ -10,6 +10,8 @@ import type {
   Credentials,
   GatewayEvent,
   GroupEntry,
+  MediaAsset,
+  MediaUploadInput,
   SavedEndpoint,
   Settings,
   StoredConfig,
@@ -51,6 +53,14 @@ const tauriBackend: Backend = {
   deleteEndpoint: (id: string) =>
     invoke<SavedEndpoint[]>('delete_endpoint', { id }),
   getCache: () => invoke<CacheSnapshot>('get_cache'),
+  listMediaAssets: () => invoke<MediaAsset[]>('list_media_assets'),
+  saveMediaAssets: (assets: MediaAsset[]) =>
+    invoke<MediaAsset[]>('save_media_assets', { assets }),
+  removeMediaAsset: (imageId: string) =>
+    invoke<MediaAsset[]>('remove_media_asset', { imageId }),
+  clearMediaAssets: () => invoke<MediaAsset[]>('clear_media_assets'),
+  uploadMediaImage: (input: MediaUploadInput) =>
+    invoke<MediaAsset>('upload_media_image', { input }),
   clearEvents: () => invoke<void>('clear_events'),
   clearCache: (kind) => invoke<CacheSnapshot>('clear_cache', { kind: kind ?? null }),
   renameCacheEntry: (kind, openid, name) =>

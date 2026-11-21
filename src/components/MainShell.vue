@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { app, botLabel, setPage } from '@/stores/app'
+import { assetsForApp } from '@/lib/media'
 import type { PageKey } from '@/types'
 import BrandMark from './BrandMark.vue'
 import Avatar from './Avatar.vue'
@@ -8,10 +9,12 @@ import StatusPill from './StatusPill.vue'
 import SendPage from './SendPage.vue'
 import ReceivePage from './ReceivePage.vue'
 import CachePage from './CachePage.vue'
+import MediaPage from './MediaPage.vue'
 import SettingsModal from './SettingsModal.vue'
 import {
   Activity,
   Database,
+  Images,
   Inbox,
   PanelLeftClose,
   PanelLeftOpen,
@@ -68,15 +71,26 @@ const pages: Array<{
     subtitle: '从事件中沉淀的群聊与用户资料',
     icon: Database,
   },
+  {
+    key: 'media',
+    label: '素材',
+    title: '素材',
+    subtitle: '缓存 qqbot-media 图片链接，构造 Markdown 时一键插入',
+    icon: Images,
+  },
 ]
 
 const current = computed(() => pages.find((page) => page.key === app.page) ?? pages[0])
 
 const cacheCount = computed(() => app.cache.groups.length + app.cache.users.length)
+const mediaCount = computed(
+  () => assetsForApp(app.mediaAssets, app.credentials?.appId).length,
+)
 
 function badgeFor(key: PageKey): number {
   if (key === 'receive') return app.events.length
   if (key === 'cache') return cacheCount.value
+  if (key === 'media') return mediaCount.value
   return app.savedEndpoints.length
 }
 
@@ -163,7 +177,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
       <div class="sidebar-foot">
         <span>AGPL-3.0</span>
-        <span class="mono">Ctrl+1 / 2 / 3</span>
+        <span class="mono">Ctrl+1 / 2 / 3 / 4</span>
       </div>
     </aside>
 
@@ -211,6 +225,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </div>
         <div v-show="app.page === 'cache'" class="page">
           <CachePage />
+        </div>
+        <div v-show="app.page === 'media'" class="page">
+          <MediaPage />
         </div>
       </main>
     </div>

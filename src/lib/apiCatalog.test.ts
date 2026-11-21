@@ -101,6 +101,22 @@ describe('API catalogue', () => {
     expect(JSON.parse(blacklistOp!.body)).toEqual({ op: 'add', member_openids: [] })
   })
 
+  // 素材管理（media-images）：prepare → 预签名 PUT → complete，列表与删除。
+  it('lists the material image endpoints', () => {
+    const media = CATALOG.filter((endpoint) => endpoint.category === '素材')
+    expect(media.map((endpoint) => endpoint.id)).toEqual([
+      'media.prepare',
+      'media.complete',
+      'media.list',
+      'media.delete',
+    ])
+    expect(getEndpoint('media.list')?.query.map((row) => row.name)).toEqual(['cursor'])
+    expect(getEndpoint('media.delete')?.pathParams.map((param) => param.name)).toEqual([
+      'image_id',
+    ])
+    expect(JSON.parse(getEndpoint('media.complete')!.body)).toEqual({ upload_id: '', md5: '' })
+  })
+
   // 2026-11-16 changelog: GET /v2/users/{user_openid}/info.
   it('lists the 2026-11-16 user profile endpoint', () => {
     const endpoint = getEndpoint('user.info')

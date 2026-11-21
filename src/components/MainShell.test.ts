@@ -12,6 +12,7 @@ function mountShell() {
         SendPage: true,
         ReceivePage: true,
         CachePage: true,
+        MediaPage: true,
         SettingsModal: true,
       },
     },
@@ -65,6 +66,11 @@ describe('MainShell sidebar', () => {
     await navItems[2].trigger('click')
 
     expect(app.page).toBe('cache')
-    expect(navItems.map((item) => item.attributes('title'))).toEqual(['发送', '接收', '缓存'])
+    expect(navItems.map((item) => item.attributes('title'))).toEqual([
+      '发送',
+      '接收',
+      '缓存',
+      '素材',
+    ])
   })
 })

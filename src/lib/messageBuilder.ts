@@ -113,6 +113,36 @@ export function scopeSupportsMedia(scope: MessageScope): boolean {
   return scope === 'group' || scope === 'c2c'
 }
 
+/**
+ * Passive-reply rules as of the 2026-11-17 changelog: a group message stays
+ * replyable for 60 minutes and accepts 5 replies by default (50 when the bot
+ * developer owns or administers the group). Its `msg_id` can also be sent to
+ * the C2C endpoint to privately reply to the sender, sharing the group limit.
+ * C2C messages themselves allow 4 passive replies per message.
+ */
+export function passiveReplyHint(scope: MessageScope): string {
+  switch (scope) {
+    case 'group':
+      return '被动回复需在收到消息后 60 分钟内发出并填写 msg_id；每条消息默认最多回复 5 次，机器人管理员为群主 / 群管理员时提升至 50 次；同一 msg_id 的多条回复用 msg_seq 区分。群消息的 msg_id 也可用于「发送单聊消息」，私聊回复该消息的发送者（需好友关系，有效期与次数按群消息规则计算，并与群内回复共用次数）。'
+    case 'c2c':
+      return '被动回复需在收到消息后 60 分钟内发出并填写 msg_id，每条消息最多回复 4 次；同一 msg_id 的多条回复用 msg_seq 区分。也可以直接填群消息的 msg_id，私聊回复该群消息的发送者（需好友关系，有效期与次数按群消息规则计算，并与群内回复共用次数）。'
+    default:
+      return '被动回复需填写 msg_id；同一 msg_id 的多条回复用 msg_seq 区分，主动消息留空即可。'
+  }
+}
+
+/** Placeholder for the `msg_id` field, tailored to the reply capability. */
+export function passiveReplyMsgIdPlaceholder(scope: MessageScope): string {
+  switch (scope) {
+    case 'group':
+      return '群消息事件里的消息 ID'
+    case 'c2c':
+      return '单聊消息 ID，或群消息 ID（私聊回复发送者）'
+    default:
+      return '事件里的消息 ID'
+  }
+}
+
 export function emptyDraft(): MessageDraft {
   return {
     kind: 'text',

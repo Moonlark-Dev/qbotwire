@@ -1,17 +1,26 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use reqwest::header::{ACCEPT, AUTHORIZATION};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
+use md5::{Digest as _, Md5};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, ETAG};
 use reqwest::{Method, StatusCode};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
+use sha1::Sha1;
 use url::Url;
 
 use crate::auth::api_error;
 use crate::error::{AppError, AppResult};
-use crate::models::{ApiRequest, ApiResponse, BotInfo, Credentials, QueryParam};
+use crate::models::{
+    ApiRequest, ApiResponse, BotInfo, Credentials, MediaAsset, MediaUploadInput, QueryParam,
+};
 use crate::Core;
 
 pub const TOKEN_PATH: &str = "/app/getAppAccessToken";
+
+/// `POST /v2/media-images/prepare` rejects anything above 10 MiB.
+const MEDIA_IMAGE_MAX_BYTES: usize = 10 * 1024 * 1024;
 
 pub fn is_token_path(path: &str) -> bool {
     path.trim().trim_end_matches('/').ends_with(TOKEN_PATH)
@@ -200,6 +209,218 @@ async fn execute_once(
     }
     let raw = response.text().await?;
     Ok((status, headers, raw))
+}
+
+struct MediaBytes {
+    file_name: String,
+    content_type: &'static str,
+    bytes: Vec<u8>,
+    md5: String,
+    sha1: String,
+}
+
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    bytes
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn media_content_type(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "image/png" => Some("image/png"),
+        "image/jpeg" | "image/jpg" => Some("image/jpeg"),
+        "image/gif" => Some("image/gif"),
+        "image/webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn media_content_type_for_name(name: &str) -> Option<&'static str> {
+    let extension = name.rsplit('.').next()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn decode_media_upload(input: &MediaUploadInput) -> AppResult<MediaBytes> {
+    let bytes = STANDARD
+        .decode(input.data_base64.as_bytes())
+        .map_err(|_| AppError::Config("图片数据不是合法的 base64".into()))?;
+    if bytes.is_empty() {
+        return Err(AppError::Config("图片内容为空".into()));
+    }
+    if bytes.len() > MEDIA_IMAGE_MAX_BYTES {
+        return Err(AppError::Config("单张图片不能超过 10 MB".into()));
+    }
+    let content_type = media_content_type(&input.content_type)
+        .ok_or_else(|| AppError::Config("图片类型只支持 png / jpeg / gif / webp".into()))?;
+    let file_name = input
+        .file_name
+        .trim()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if file_name.is_empty() {
+        return Err(AppError::Config("图片文件名不能为空".into()));
+    }
+    if media_content_type_for_name(&file_name) != Some(content_type) {
+        return Err(AppError::Config(
+            "文件名扩展名需要与图片类型一致（png / jpeg / gif / webp）".into(),
+        ));
+    }
+    let md5 = hex_digest(Md5::digest(&bytes));
+    let sha1 = hex_digest(Sha1::digest(&bytes));
+    Ok(MediaBytes {
+        file_name,
+        content_type,
+        bytes,
+        md5,
+        sha1,
+    })
+}
+
+fn required_string(value: &Value, key: &str) -> AppResult<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| AppError::Api(format!("素材接口响应里缺少 {key}")))
+}
+
+fn response_json(status: StatusCode, value: &Value, raw: &str) -> AppResult<Value> {
+    if status.is_success() {
+        Ok(value.clone())
+    } else {
+        Err(api_error(status.as_u16(), value, raw))
+    }
+}
+
+fn raw_snippet(raw: &str) -> String {
+    raw.trim().chars().take(200).collect()
+}
+
+/// Full material image upload: `prepare` → binary PUT to the presigned URL →
+/// `complete`. The returned asset is *not* cached here; the UI stores it with
+/// its locally generated thumbnail.
+pub async fn upload_media_image(core: &Core, input: MediaUploadInput) -> AppResult<MediaAsset> {
+    let media = decode_media_upload(&input)?;
+    let credentials = core
+        .store
+        .credentials()
+        .ok_or_else(|| AppError::Config("还没有配置 Bot 凭据，请先在设置里填写".into()))?;
+    let token = core
+        .auth
+        .access_token(&core.http, &credentials, false)
+        .await?;
+    upload_media_with_base(
+        &core.http,
+        &credentials.base_url(),
+        &token,
+        &credentials.app_id,
+        media,
+    )
+    .await
+}
+
+/// Network half of the upload, split out so it can be exercised against a local
+/// fake endpoint without a Tauri runtime.
+async fn upload_media_with_base(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    app_id: &str,
+    media: MediaBytes,
+) -> AppResult<MediaAsset> {
+    let base = base.trim_end_matches('/');
+    let size = media.bytes.len() as u64;
+    let response = http
+        .post(format!("{base}/v2/media-images/prepare"))
+        .header(AUTHORIZATION, format!("QQBot {token}"))
+        .header(ACCEPT, "application/json")
+        .json(&json!({
+            "file_name": &media.file_name,
+            "file_size": size,
+            "content_type": media.content_type,
+            "md5": &media.md5,
+            "sha1": &media.sha1,
+        }))
+        .send()
+        .await?;
+    let status = response.status();
+    let raw = response.text().await?;
+    let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+    let prepared = response_json(status, &value, &raw)?;
+    let upload_id = required_string(&prepared, "upload_id")?;
+    let presigned_url = required_string(&prepared, "presigned_url")?;
+
+    let response = http
+        .put(&presigned_url)
+        .header(CONTENT_TYPE, media.content_type)
+        .body(media.bytes)
+        .send()
+        .await?;
+    let status = response.status();
+    let etag = response
+        .headers()
+        .get(ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.trim_matches('"').to_ascii_lowercase());
+    let raw = response.text().await?;
+    if !status.is_success() {
+        return Err(AppError::Api(format!(
+            "上传图片二进制失败：HTTP {} · {}",
+            status.as_u16(),
+            raw_snippet(&raw)
+        )));
+    }
+    if let Some(etag) = etag.filter(|value| !value.is_empty()) {
+        if etag != media.md5 {
+            return Err(AppError::Api(format!(
+                "上传后的 ETag（{etag}）与本地 MD5（{}）不一致",
+                media.md5
+            )));
+        }
+    }
+
+    let response = http
+        .post(format!("{base}/v2/media-images/complete"))
+        .header(AUTHORIZATION, format!("QQBot {token}"))
+        .header(ACCEPT, "application/json")
+        .json(&json!({ "upload_id": upload_id, "md5": media.md5 }))
+        .send()
+        .await?;
+    let status = response.status();
+    let raw = response.text().await?;
+    let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+    let completed = response_json(status, &value, &raw)?;
+    let image_id = required_string(&completed, "image_id")?;
+    let url = required_string(&completed, "url")?;
+    let ttl = completed.get("ttl").and_then(Value::as_i64).unwrap_or(0);
+    let created_at = chrono::Utc::now().timestamp();
+    Ok(MediaAsset {
+        image_id,
+        url,
+        file_name: media.file_name,
+        content_type: media.content_type.to_string(),
+        size,
+        width: None,
+        height: None,
+        thumbnail: None,
+        app_id: Some(app_id.to_string()),
+        created_at,
+        expires_at: created_at.saturating_add(ttl.max(0)),
+        source: "upload".to_string(),
+    })
 }
 
 async fn get_json(core: &Core, url: &str, token: &str) -> AppResult<Value> {
@@ -406,6 +627,50 @@ mod tests {
     }
 
     #[test]
+    fn decodes_and_hashes_media_uploads() {
+        let input = MediaUploadInput {
+            file_name: "/tmp/chart.png".into(),
+            content_type: "image/png".into(),
+            data_base64: STANDARD.encode(b"abc"),
+        };
+        let media = decode_media_upload(&input).unwrap();
+        assert_eq!(media.file_name, "chart.png");
+        assert_eq!(media.content_type, "image/png");
+        assert_eq!(media.bytes, b"abc".to_vec());
+        assert_eq!(media.md5, "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(media.sha1, "a9993e364706816aba3e25717850c26c9cd0d89d");
+    }
+
+    #[test]
+    fn rejects_invalid_media_uploads() {
+        let base = MediaUploadInput {
+            file_name: "chart.png".into(),
+            content_type: "image/png".into(),
+            data_base64: STANDARD.encode(b"abc"),
+        };
+        assert!(decode_media_upload(&MediaUploadInput {
+            data_base64: String::new(),
+            ..base.clone()
+        })
+        .is_err());
+        assert!(decode_media_upload(&MediaUploadInput {
+            content_type: "image/bmp".into(),
+            ..base.clone()
+        })
+        .is_err());
+        assert!(decode_media_upload(&MediaUploadInput {
+            content_type: "image/jpeg".into(),
+            ..base.clone()
+        })
+        .is_err());
+        assert!(decode_media_upload(&MediaUploadInput {
+            data_base64: "not base64!!".into(),
+            ..base
+        })
+        .is_err());
+    }
+
+    #[test]
     fn parses_group_info_with_the_union_group_openid() {
         let info = parse_group_info(&serde_json::json!({
             "group_openid": "g-1",
@@ -455,5 +720,181 @@ mod tests {
         assert_eq!(payload["clientSecret"], "secret-123");
         assert_eq!(payload["extra"], 1);
         assert!(token_payload(&credentials, Some(serde_json::json!("nope"))).is_err());
+    }
+
+    use std::io::{Read as _, Write as _};
+    use std::net::{TcpListener, TcpStream};
+
+    struct RecordedRequest {
+        method: String,
+        path: String,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    }
+
+    impl RecordedRequest {
+        fn header(&self, name: &str) -> Option<&str> {
+            self.headers
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.as_str())
+        }
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> RecordedRequest {
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut data = Vec::new();
+        let mut buffer = [0u8; 4096];
+        let header_end = loop {
+            if let Some(position) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+                break position;
+            }
+            let read = stream.read(&mut buffer).unwrap();
+            assert!(read > 0, "connection closed before the headers");
+            data.extend_from_slice(&buffer[..read]);
+        };
+        let head = String::from_utf8_lossy(&data[..header_end]).to_string();
+        let mut lines = head.split("\r\n");
+        let mut parts = lines.next().unwrap_or_default().split_whitespace();
+        let method = parts.next().unwrap_or_default().to_string();
+        let path = parts.next().unwrap_or_default().to_string();
+        let mut headers = Vec::new();
+        for line in lines {
+            if let Some((name, value)) = line.split_once(':') {
+                headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
+            }
+        }
+        let content_length = headers
+            .iter()
+            .find(|(name, _)| name == "content-length")
+            .and_then(|(_, value)| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        let mut body = data[(header_end + 4).min(data.len())..].to_vec();
+        while body.len() < content_length {
+            let read = stream.read(&mut buffer).unwrap();
+            assert!(read > 0, "connection closed before the body");
+            body.extend_from_slice(&buffer[..read]);
+        }
+        body.truncate(content_length);
+        RecordedRequest {
+            method,
+            path,
+            headers,
+            body,
+        }
+    }
+
+    fn write_http_response(
+        stream: &mut TcpStream,
+        status: &str,
+        extra: &[(&str, String)],
+        body: &str,
+    ) {
+        let mut response = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n",
+            body.len()
+        );
+        for (name, value) in extra {
+            response.push_str(&format!("{name}: {value}\r\n"));
+        }
+        response.push_str("\r\n");
+        response.push_str(body);
+        stream.write_all(response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+    }
+
+    fn start_fake_media_server(
+        md5: &str,
+    ) -> (
+        String,
+        std::sync::mpsc::Receiver<RecordedRequest>,
+        std::thread::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let md5 = md5.to_string();
+        let server_base = base.clone();
+        let handle = std::thread::spawn(move || {
+            for index in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let request = read_http_request(&mut stream);
+                match index {
+                    0 => write_http_response(
+                        &mut stream,
+                        "200 OK",
+                        &[],
+                        &format!(
+                            "{{\"upload_id\":\"upload-1\",\"presigned_url\":\"{server_base}/upload\",\"expires_in\":3600}}"
+                        ),
+                    ),
+                    1 => write_http_response(
+                        &mut stream,
+                        "200 OK",
+                        &[("ETag", format!("\"{md5}\""))],
+                        "",
+                    ),
+                    _ => write_http_response(
+                        &mut stream,
+                        "200 OK",
+                        &[],
+                        "{\"image_id\":\"img-1\",\"url\":\"qqbot-media://image/v1/token-1\",\"ttl\":7776000,\"preview_url\":\"https://example.com/preview\"}",
+                    ),
+                }
+                sender.send(request).unwrap();
+            }
+        });
+        (base, receiver, handle)
+    }
+
+    #[tokio::test]
+    async fn runs_the_material_upload_flow() {
+        let bytes = b"abc".to_vec();
+        let media = MediaBytes {
+            file_name: "chart.png".into(),
+            content_type: "image/png",
+            md5: hex_digest(Md5::digest(&bytes)),
+            sha1: hex_digest(Sha1::digest(&bytes)),
+            bytes,
+        };
+        let (base, requests, server) = start_fake_media_server(&media.md5);
+        let client = reqwest::Client::new();
+        let asset = upload_media_with_base(&client, &base, "token-1", "102030405", media)
+            .await
+            .unwrap();
+        server.join().unwrap();
+        let seen: Vec<RecordedRequest> = requests.into_iter().collect();
+
+        assert_eq!(asset.image_id, "img-1");
+        assert_eq!(asset.url, "qqbot-media://image/v1/token-1");
+        assert_eq!(asset.content_type, "image/png");
+        assert_eq!(asset.size, 3);
+        assert_eq!(asset.app_id.as_deref(), Some("102030405"));
+        assert_eq!(asset.expires_at - asset.created_at, 7_776_000);
+        assert_eq!(asset.source, "upload");
+
+        assert_eq!(seen[0].method, "POST");
+        assert_eq!(seen[0].path, "/v2/media-images/prepare");
+        assert_eq!(seen[0].header("authorization"), Some("QQBot token-1"));
+        let prepare: Value = serde_json::from_slice(&seen[0].body).unwrap();
+        assert_eq!(prepare["file_name"], "chart.png");
+        assert_eq!(prepare["file_size"], 3);
+        assert_eq!(prepare["content_type"], "image/png");
+        assert_eq!(prepare["md5"], hex_digest(Md5::digest(b"abc")));
+        assert_eq!(prepare["sha1"], hex_digest(Sha1::digest(b"abc")));
+
+        assert_eq!(seen[1].method, "PUT");
+        assert_eq!(seen[1].path, "/upload");
+        assert_eq!(seen[1].header("content-type"), Some("image/png"));
+        assert_eq!(seen[1].body, b"abc");
+
+        assert_eq!(seen[2].method, "POST");
+        assert_eq!(seen[2].path, "/v2/media-images/complete");
+        assert_eq!(seen[2].header("authorization"), Some("QQBot token-1"));
+        let complete: Value = serde_json::from_slice(&seen[2].body).unwrap();
+        assert_eq!(complete["upload_id"], "upload-1");
+        assert_eq!(complete["md5"], hex_digest(Md5::digest(b"abc")));
     }
 }

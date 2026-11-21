@@ -4,6 +4,7 @@ mod cache;
 mod commands;
 mod error;
 mod gateway;
+mod media;
 mod models;
 mod store;
 
@@ -18,6 +19,7 @@ use crate::auth::AuthManager;
 use crate::cache::CacheStore;
 use crate::error::{AppError, AppResult};
 use crate::gateway::GatewayController;
+use crate::media::MediaStore;
 use crate::models::{
     Bootstrap, CacheSnapshot, ConnectionStatus, Credentials, GatewayEvent, GroupEntry, Settings,
     StoredConfig, UserEntry,
@@ -30,6 +32,7 @@ pub struct Core {
     pub http: reqwest::Client,
     pub store: Arc<Store>,
     pub cache: Arc<CacheStore>,
+    pub media: Arc<MediaStore>,
     pub auth: Arc<AuthManager>,
     pub gateway: Arc<GatewayController>,
     enrich_attempted: Arc<Mutex<HashSet<String>>>,
@@ -40,6 +43,7 @@ impl Core {
         std::fs::create_dir_all(&data_dir)?;
         let store = Arc::new(Store::open(&data_dir)?);
         let cache = Arc::new(CacheStore::open(&data_dir)?);
+        let media = Arc::new(MediaStore::open(&data_dir)?);
         let http = reqwest::Client::builder()
             .user_agent(concat!("QBotWire/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(60))
@@ -50,6 +54,7 @@ impl Core {
             http,
             store,
             cache,
+            media,
             auth: Arc::new(AuthManager::new()),
             gateway: Arc::new(GatewayController::default()),
             enrich_attempted: Arc::new(Mutex::new(HashSet::new())),
@@ -62,6 +67,7 @@ impl Core {
             status: self.gateway.status(),
             events: self.gateway.events(),
             cache: self.cache.snapshot(),
+            media_assets: self.media.list(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
@@ -315,6 +321,11 @@ pub fn run() {
             commands::rename_cache_entry,
             commands::refresh_group,
             commands::refresh_user,
+            commands::list_media_assets,
+            commands::save_media_assets,
+            commands::remove_media_asset,
+            commands::clear_media_assets,
+            commands::upload_media_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running qbotwire");
